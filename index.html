@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0f1216">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="家計簿">
+<title>家計簿 v1 ― 複式簿記ハイブリッド</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<!-- ログイン画面 -->
+<div class="auth-overlay" id="authOverlay">
+  <div class="auth-card">
+    <div class="auth-logo">家計簿</div>
+    <div class="acc-sub" style="text-align:center;margin-bottom:14px">複式簿記ハイブリッド ・ クラウド同期</div>
+    <div class="field"><label>メールアドレス</label><input id="authEmail" type="email" autocomplete="username" placeholder="you@example.com"></div>
+    <div class="field"><label>パスワード</label><input id="authPass" type="password" autocomplete="current-password" placeholder="6文字以上"></div>
+    <div class="balance-warn" id="authMsg" style="min-height:20px"></div>
+    <button class="btn" id="authLogin" style="width:100%">ログイン</button>
+    <button class="btn ghost" id="authSignup" style="width:100%;margin-top:8px">新規アカウント作成</button>
+    <p class="hint" style="margin-top:12px">家族で共有する場合は、同じメール・パスワードで両方の端末からログインしてください。</p>
+  </div>
+</div>
+
+<div class="app">
+  <header class="top">
+    <div class="brand">家計簿 <small>v1 · 複式簿記ハイブリッド</small></div>
+    <div class="spacer"></div>
+    <div class="account-bar" id="accountBar"></div>
+    <div class="monthnav">
+      <button id="ymPrev" title="前の月">‹</button>
+      <input type="month" id="ym">
+      <button id="ymNext" title="次の月">›</button>
+      <button class="today-btn" id="ymToday">今月</button>
+    </div>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button data-tab="entry" class="active">入力</button>
+    <button data-tab="list">取引一覧</button>
+    <button data-tab="drill">カテゴリ分析</button>
+    <button data-tab="budget">予算・積立</button>
+    <button data-tab="wish">ほしいもの・比較</button>
+    <button data-tab="accounts">残高・口座</button>
+    <button data-tab="cards">カード請求</button>
+    <button data-tab="report">レポート</button>
+    <button data-tab="settings">設定</button>
+  </nav>
+
+  <div id="globalNotice"></div>
+
+  <section id="tab-entry">
+    <div class="grid cols-4" id="summaryCards"></div>
+    <div class="panel">
+      <div id="editBanner"></div>
+      <div class="typebar" id="typebar">
+        <button data-type="expense" class="active">支出</button>
+        <button data-type="income">収入</button>
+        <button data-type="transfer">振替・チャージ</button>
+        <button data-type="prepaid">前払購入</button>
+        <button data-type="goods_use">現物券つかう</button>
+      </div>
+      <div id="entryForm"></div>
+    </div>
+  </section>
+
+  <section id="tab-list" hidden>
+    <div class="panel">
+      <div class="filters">
+        <div class="field"><label>月で絞込</label><input type="month" id="fltYm"></div>
+        <div class="field"><label>大カテゴリ</label><select id="fltCat"></select></div>
+        <div class="field"><label>種別</label><select id="fltKind"></select></div>
+        <div class="field" style="flex:2"><label>キーワード(店/支店/メモ/カテゴリ)</label><input id="fltText" placeholder="例: スーパー / 食材 / 家賃"></div>
+        <button class="btn ghost sm" id="fltClear">クリア</button>
+      </div>
+      <div id="bulkBar"></div>
+      <div style="overflow:auto; max-height:60vh">
+        <table id="txTable"><thead><tr>
+          <th class="chk"><input type="checkbox" id="chkAll" title="全選択"></th>
+          <th>日付</th><th>種別</th><th>借方(何に)</th><th>貸方(どこから)</th><th>店名</th><th class="num">金額</th><th></th>
+        </tr></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-drill" hidden>
+    <div class="panel">
+      <div class="section-title"><h3>カテゴリ分析</h3>
+        <select id="drillKind" style="width:auto"><option value="expense">費用</option><option value="income">収入</option></select></div>
+      <div class="crumb" id="drillCrumb"></div>
+      <div class="chart-wrap" style="margin-bottom:16px">
+        <div id="drillDonut"></div>
+        <div class="donut-legend" id="drillList" style="min-width:360px"></div>
+      </div>
+      <div id="drillDetail"></div>
+    </div>
+  </section>
+
+  <section id="tab-budget" hidden>
+    <div class="panel">
+      <div class="section-title"><h3>カテゴリ予算（対象月）</h3>
+        <div style="display:flex; gap:10px; align-items:center">
+          <label style="margin:0; display:flex; gap:6px; align-items:center; font-size:12px"><input type="checkbox" id="budRollover" style="width:auto"> 繰越（前月の余り/超過を反映）</label>
+          <button class="btn sm" id="addBudget">＋予算を設定</button>
+        </div></div>
+      <div class="grid cols-3" id="budgetCards"></div>
+      <div id="budgetList"></div>
+    </div>
+    <div class="panel">
+      <div class="section-title"><h3>積立目標（シミュレーター）</h3><button class="btn sm" id="addGoal">＋目標を追加</button></div>
+      <div class="sim-box">
+        <div class="field"><label>毎月の積立に回せる額</label><input type="number" id="simSurplus" style="width:140px"></div>
+        <div class="acc-sub" id="simHint"></div>
+        <button class="btn ghost sm" id="simUseAvg">直近平均を使う</button>
+      </div>
+      <div id="goalTimeline"></div>
+      <div id="goalList"></div>
+    </div>
+  </section>
+
+  <section id="tab-wish" hidden>
+    <div class="panel">
+      <div class="section-title"><h3>ほしいものリスト</h3><button class="btn sm" id="addWish">＋ほしいものを追加</button></div>
+      <p class="hint">買い物メモ〜高額品まで。タグで絞り込み、購入したら「購入済」に。ワンボタンで積立目標に変換も。</p>
+      <div class="tagbar" id="wishTags"></div>
+      <div id="wishSummary" class="acc-sub" style="margin-bottom:8px"></div>
+      <div id="wishList"></div>
+    </div>
+    <div class="panel">
+      <div class="section-title"><h3>価格比較</h3><button class="btn sm" id="addPrice">＋価格を記録</button></div>
+      <p class="hint">品目をタップで展開。実質単価（100g / 本 / 個…）で比較して最安を表示します。</p>
+      <div id="priceList"></div>
+    </div>
+  </section>
+
+  <section id="tab-accounts" hidden>
+    <div class="grid cols-2">
+      <div class="panel">
+        <div class="section-title"><h3>口座残高</h3><span class="pill" id="netWorth"></span></div>
+        <div id="accList"></div>
+      </div>
+      <div class="panel">
+        <div class="section-title"><h3>口座の管理</h3><button class="btn sm" id="addAcc">＋口座を追加</button></div>
+        <div id="accManage"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-cards" hidden>
+    <div class="panel">
+      <div class="section-title"><h3>カード請求サイクル（締め日ベース）</h3><span class="pill">締め日・引落日で自動集計</span></div>
+      <div id="cardCycles"></div>
+    </div>
+  </section>
+
+  <section id="tab-report" hidden>
+    <div class="grid cols-4" id="reportCards"></div>
+    <div class="panel"><h3>収支トレンド（直近6か月）</h3><div id="trendChart"></div></div>
+    <div class="panel"><h3>大カテゴリ別 支出（対象月）</h3>
+      <div class="chart-wrap"><div id="donutChart"></div><div class="donut-legend" id="donutLegend"></div></div>
+    </div>
+  </section>
+
+  <section id="tab-settings" hidden>
+    <div class="panel">
+      <div class="section-title"><h3>固定費・定期収入（毎月/隔月ほか・営業日調整対応）</h3><button class="btn sm" id="addRec">＋テンプレを追加</button></div>
+      <p class="hint">家賃・サブスク・給与や隔月の水道代などを登録。土日祝は翌/前営業日に自動調整できます。</p>
+      <div id="recList"></div>
+    </div>
+    <div class="panel">
+      <div class="section-title"><h3>レシートテンプレート</h3><button class="btn sm" id="addTpl">＋テンプレを追加</button></div>
+      <p class="hint">よく買う組み合わせ（店・カテゴリ構成・支払手段）を保存。入力画面の「テンプレ」から1タップで呼び出せます。</p>
+      <div id="tplList"></div>
+    </div>
+    <div class="panel">
+      <div class="section-title"><h3>読み仮名の管理</h3><button class="btn sm" id="addReading">＋読みを追加</button></div>
+      <p class="hint">店名・品目などの「よみ」を登録すると、漢字でもひらがな検索でヒットします（入力時に自動記録もされます）。</p>
+      <div id="readingList"></div>
+    </div>
+    <div class="panel">
+      <h3>カテゴリ</h3>
+      <p class="hint">小カテゴリを自由に追加できます。大／中を選んで小カテゴリ名を入れてください。</p>
+      <div class="row">
+        <div class="field"><label>種別</label><select id="catKind"><option value="expense">費用</option><option value="income">収入</option></select></div>
+        <div class="field"><label>大カテゴリ</label><input id="catTop" list="dl-top" placeholder="例: 食費"></div>
+        <div class="field"><label>中カテゴリ</label><input id="catMid" placeholder="例: 食材"></div>
+        <div class="field"><label>小カテゴリ</label><input id="catLeaf" placeholder="例: 主食"></div>
+        <div class="field" style="flex:0 0 auto; display:flex; align-items:flex-end"><button class="btn sm" id="addCat">追加</button></div>
+      </div>
+      <datalist id="dl-top"></datalist>
+      <div id="catTree" style="margin-top:12px"></div>
+    </div>
+    <div class="panel">
+      <h3>データ（バックアップ / 端末間移行 / 開発）</h3>
+      <p class="hint">CSVは1行=1明細（借方/貸方）のジャーナル形式。取込時に「全置換／上書き更新／既存を保持」を選べます。JSONは完全バックアップ用。</p>
+      <div class="row">
+        <button class="btn ghost" id="exportCsv">CSV書き出し</button>
+        <button class="btn ghost" id="importCsv">CSV読み込み</button>
+        <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+        <button class="btn ghost" id="exportBtn">JSON書き出し</button>
+        <button class="btn ghost" id="importBtn">JSON読み込み</button>
+        <input type="file" id="importFile" accept="application/json" hidden>
+        <button class="btn ghost" id="loadDummy">ダミーデータ投入</button>
+        <button class="btn danger" id="resetBtn">全データ初期化</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<datalist id="dl-store"></datalist>
+<datalist id="dl-branch"></datalist>
+<datalist id="dl-item"></datalist>
+
+<div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
+<div class="toast" id="toast"></div>
+
+<!-- Supabase JS -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="model.js"></script>
+<!-- cloud.js が認証後に app.js を注入します -->
+<script src="cloud.js"></script>
+</body>
+</html>
