@@ -33,15 +33,12 @@ header.top .spacer{flex:1}
 .tabs button:hover{color:var(--text); background:var(--panel)}
 .tabs button.active{color:var(--text); border-bottom-color:var(--accent); font-weight:600}
 
-/* 下タブ（スマホ） */
-.bottom-nav{display:none; position:fixed; left:0; right:0; bottom:0; height:calc(var(--bottom-h) + env(safe-area-inset-bottom)); padding-bottom:env(safe-area-inset-bottom); background:var(--panel); border-top:1px solid var(--line); z-index:70}
-.bottom-nav{grid-template-columns:repeat(5,1fr)}
+.bottom-nav{display:none; position:fixed; left:0; right:0; bottom:0; height:calc(var(--bottom-h) + env(safe-area-inset-bottom)); padding-bottom:env(safe-area-inset-bottom); background:var(--panel); border-top:1px solid var(--line); z-index:70; grid-template-columns:repeat(5,1fr)}
 .bottom-nav button{background:transparent; border:0; color:var(--muted); display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; height:100%}
 .bottom-nav button.active{color:var(--accent)}
 .bottom-nav .bn-ic{font-size:20px; line-height:1}
 .bottom-nav .bn-tx{font-size:10px}
 
-/* ドロワー */
 .drawer-bg{position:fixed; inset:0; background:rgba(0,0,0,.5); display:none; z-index:80}
 .drawer-bg.show{display:block}
 .drawer{position:fixed; top:0; bottom:0; right:0; width:min(78vw,300px); background:var(--panel); border-left:1px solid var(--line); transform:translateX(100%); transition:transform .22s; z-index:90; display:flex; flex-direction:column}
@@ -65,12 +62,6 @@ header.top .spacer{flex:1}
 .stat .v{font-size:22px; font-weight:700; margin-top:4px}
 .stat .v.pos{color:var(--accent2)} .stat .v.neg{color:var(--danger)}
 .stat .sub{font-size:11px; color:var(--muted); margin-top:2px}
-
-.summary-fold{margin-top:6px}
-.summary-fold > summary{cursor:pointer; color:var(--muted); font-size:13px; padding:8px 0; list-style:none}
-.summary-fold > summary::-webkit-details-marker{display:none}
-.summary-fold > summary::before{content:'▸ '; color:var(--accent)}
-.summary-fold[open] > summary::before{content:'▾ '}
 
 label{display:block; font-size:12px; color:var(--muted); margin:0 0 4px}
 input,select,textarea{width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--text); padding:9px 10px; border-radius:9px; font-size:14px; outline:none}
@@ -110,8 +101,6 @@ textarea{resize:vertical; min-height:38px}
 .line-row .cat{flex:2}
 .line-row .amt{flex:0 0 168px}
 .line-row .amt input{text-align:right; font-variant-numeric:tabular-nums}
-.line-row .amt .amtline{display:flex; gap:4px}
-.line-row .amt .padbtn{flex:0 0 auto; width:38px; padding:0; font-size:16px}
 .line-row .ratio{flex:0 0 84px}
 .line-row .ratio input{text-align:right}
 .chips{display:flex; gap:6px; flex-wrap:wrap; margin:2px 0 10px}
@@ -194,6 +183,23 @@ svg .bar-exp{fill:var(--danger)}
 .drill-bud{font-size:11px; margin-top:6px; display:flex; align-items:center; gap:8px}
 .drill-bud .bar{flex:1; max-width:200px; margin:0}
 
+/* 分析：収支オーバービュー */
+.ov-net{display:flex; align-items:baseline; gap:10px; margin:4px 0 12px}
+.ov-net .lbl{color:var(--muted); font-size:13px}
+.ov-net .val{font-size:26px; font-weight:800; font-variant-numeric:tabular-nums}
+.ov-net .rate{font-size:12px; color:var(--muted)}
+.ov-bars{margin:10px 0 14px}
+.ov-bar{margin-bottom:10px}
+.ov-bar .cap{display:flex; justify-content:space-between; font-size:12px; margin-bottom:4px}
+.ov-bar .track{height:14px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; overflow:hidden}
+.ov-bar .track > span{display:block; height:100%}
+.ov-bar.inc .track > span{background:var(--accent2)}
+.ov-bar.exp .track > span{background:var(--danger)}
+.ov-cols{display:flex; gap:20px; flex-wrap:wrap}
+.ov-col{flex:1; min-width:240px}
+.ov-col h4{margin:0 0 8px; font-size:14px}
+.ov-col h4 .goto{font-size:12px; color:var(--accent); cursor:pointer; font-weight:500; margin-left:8px}
+
 .rec-row{display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--line)}
 .rec-row:last-child{border-bottom:0}
 .rec-row .rn{flex:1}
@@ -268,7 +274,6 @@ svg .bar-exp{fill:var(--danger)}
 .tpl-chip{background:var(--chip); border:1px solid var(--line); color:var(--text); border-radius:999px; padding:6px 12px; font-size:12px; cursor:pointer}
 .tpl-chip:hover{border-color:var(--accent)}
 
-/* オートコンプリート（店名・品目・カテゴリ検索共通） */
 .ac-wrap{position:relative}
 .ac-pop{position:absolute; left:0; right:0; top:calc(100% + 2px); background:var(--panel); border:1px solid var(--line); border-radius:9px; box-shadow:var(--shadow); z-index:100; max-height:260px; overflow:auto; display:none}
 .ac-pop.show{display:block}
@@ -276,7 +281,6 @@ svg .bar-exp{fill:var(--danger)}
 .ac-item:last-child{border-bottom:0}
 .ac-item:hover{background:var(--panel2)}
 .ac-item.active{background:rgba(79,157,255,.24); color:#fff; box-shadow:inset 3px 0 0 var(--accent)}
-/* カテゴリ候補 2行表示 */
 .ac-item .cc-head{font-size:11px; color:var(--muted); line-height:1.2}
 .ac-item .cc-leaf{font-size:15px; font-weight:600; line-height:1.25}
 .ac-item.active .cc-head{color:#cfe0ff}
@@ -296,39 +300,6 @@ svg .bar-exp{fill:var(--danger)}
 .modal h3{margin-bottom:14px}
 .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:16px; flex-wrap:wrap}
 
-/* 金額パッド（下からシート） */
-.pad-sheet{position:fixed; left:0; right:0; bottom:0; background:var(--panel); border-top:1px solid var(--line); box-shadow:0 -8px 24px rgba(0,0,0,.4); z-index:120; transform:translateY(100%); transition:transform .22s; padding:12px 12px calc(12px + env(safe-area-inset-bottom)); max-height:82vh; overflow:auto}
-.pad-sheet.show{transform:translateY(0)}
-.pad-head{display:flex; align-items:center; gap:8px; margin-bottom:10px}
-.pad-modes{display:flex; gap:6px}
-.pad-modes button{background:var(--chip); border:1px solid var(--line); color:var(--muted); border-radius:999px; padding:6px 12px; font-size:13px; cursor:pointer}
-.pad-modes button.active{background:var(--accent); border-color:var(--accent); color:#fff}
-.pad-head .spacer{flex:1}
-.pad-disp{background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:10px 12px; font-size:22px; font-variant-numeric:tabular-nums; text-align:right; min-height:44px; margin-bottom:10px; word-break:break-all}
-.pad-disp .sub{font-size:12px; color:var(--muted)}
-.calc-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:8px}
-.calc-grid button{background:var(--panel2); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:16px 0; font-size:18px; cursor:pointer}
-.calc-grid button:active{background:var(--chip)}
-.calc-grid button.op{color:var(--accent)}
-.calc-grid button.eq{background:var(--accent); border-color:var(--accent); color:#fff; grid-column:span 1}
-.calc-grid button.wide{grid-column:span 2}
-.pad-actions{display:flex; gap:8px; margin-top:12px}
-.pad-actions .btn{flex:1}
-
-/* レシートモード */
-.rc-list{display:flex; flex-direction:column; gap:6px; margin-bottom:8px}
-.rc-item{display:flex; align-items:center; gap:8px; padding:8px; border:1px solid var(--line); border-radius:9px; background:var(--panel2)}
-.rc-item.sel{border-color:var(--accent); background:rgba(79,157,255,.1)}
-.rc-item .rc-chk{width:auto; flex:0 0 auto}
-.rc-item .rc-amt{flex:0 0 110px; text-align:right; font-variant-numeric:tabular-nums}
-.rc-item .rc-cat{flex:1; min-width:0}
-.rc-item .rc-cat .catcombo .cc-input{padding:6px 8px}
-.rc-item .rc-del{flex:0 0 auto}
-.rc-addrow{display:flex; gap:8px}
-.rc-addrow input{flex:1; text-align:right; font-variant-numeric:tabular-nums; font-size:18px}
-.rc-tools{display:flex; gap:6px; flex-wrap:wrap; margin:8px 0; align-items:center}
-.rc-total{display:flex; justify-content:space-between; padding:8px 10px; background:var(--panel2); border:1px solid var(--line); border-radius:9px; font-weight:700}
-
 .toast{position:fixed; bottom:calc(20px + env(safe-area-inset-bottom)); left:50%; transform:translateX(-50%); background:var(--panel2); border:1px solid var(--line); padding:10px 18px; border-radius:10px; box-shadow:var(--shadow); opacity:0; transition:opacity .25s, transform .25s; pointer-events:none; z-index:130; max-width:90vw}
 .toast.show{opacity:1; transform:translateX(-50%) translateY(-4px)}
 .section-title{display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; gap:8px; flex-wrap:wrap}
@@ -339,35 +310,34 @@ svg .bar-exp{fill:var(--danger)}
 .auth-card{background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); box-shadow:var(--shadow); padding:26px; width:100%; max-width:380px}
 .auth-logo{font-size:26px; font-weight:800; text-align:center; letter-spacing:.04em; margin-bottom:2px}
 
-/* ============ レスポンシブ（スマホ） ============ */
 @media(max-width:760px){
   .grid.cols-2,.grid.cols-3,.grid.cols-4{grid-template-columns:1fr}
   .app{padding:12px; padding-bottom:calc(var(--bottom-h) + env(safe-area-inset-bottom) + 12px)}
   header.top{gap:8px}
-  .hamburger{display:none}          /* メニューは下タブ側の≡に集約 */
+  .hamburger{display:none}
   .brand{font-size:17px}
   .brand small{display:none}
   .cur-tab{display:block}
-  .tabs{display:none}               /* PCタブは隠す */
-  .bottom-nav{display:grid}         /* 下タブ表示 */
+  .tabs{display:none}
+  .bottom-nav{display:grid}
   .account-bar{order:5; width:100%; justify-content:space-between}
   .acc-mail{max-width:46vw}
   .monthnav{order:6; width:100%; justify-content:center}
   .monthnav input[type=month]{flex:1; width:auto}
   .panel{padding:13px}
-  /* 明細行：縦積みで大きく */
   .line-row{flex-wrap:wrap; gap:6px; border:1px solid var(--line); border-radius:10px; padding:8px; background:var(--panel2)}
   .line-row .cat{flex:1 1 100%}
   .line-row .amt{flex:1 1 100%}
   .line-row .ratio{flex:0 0 70px}
   .line-row > div:last-child{flex:0 0 auto}
-  .line-row .amt .padbtn{width:44px; font-size:18px}
   .btn{padding:11px 16px}
   .btn.sm{padding:8px 12px}
   .modal{padding:16px; border-radius:14px 14px 0 0; max-height:92vh; align-self:flex-end}
   .modal-bg{align-items:flex-end; padding:0}
   .modal .actions{position:sticky; bottom:0; background:var(--panel); padding-top:10px}
-  input,select,textarea{font-size:16px}   /* iOSの自動ズーム防止 */
+  input,select,textarea{font-size:16px}
   .filters{gap:8px}
   .filters .field{flex:1 1 46%}
+  .ov-cols{gap:8px}
+  .ov-col{min-width:100%}
 }

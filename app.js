@@ -1,7 +1,7 @@
 /* =====================================================================
- * app.js ― UI / イベント / 状態管理  (v1.1 フェーズ1)
- *  下タブ＋ドロワー / 入力優先 / カテゴリ2行表示 / ほしいもの・価格分離
- *  ※ StorageAdapter は cloud.js が提供
+ * app.js ― UI / イベント / 状態管理  (v1.2)
+ *  入力からサマリ撤去 / 「分析」タブ（収支=俯瞰・費用/収入=ドリル）
+ *  下タブ＋ドロワー / カテゴリ2行 / ほしいもの・価格分離（v1.1踏襲）
  * ===================================================================== */
 (function () {
   'use strict';
@@ -21,7 +21,7 @@
   }
   ui._date = M.todayStr(); ui.type = 'expense'; resetEntryState();
 
-  let drill = { kind: 'expense', parts: [], leaf: null };
+  let drill = { kind: 'net', parts: [], leaf: null };   // 既定=収支(net)
   let selected = new Set();
   let simSurplus = null;
   let wishFilter = { tag: null, status: 'active' };
@@ -45,7 +45,7 @@
   }
   function attachHankakuAll(root) { $$('input[inputmode="decimal"], input[inputmode="numeric"], input[type="number"]', root || document).forEach(attachHankaku); }
 
-  /* ---- オートコンプリート（店名/支店/品目：読み仮名対応） ---- */
+  /* ---- オートコンプリート（店名/支店/品目） ---- */
   function attachAC(input, getCands) {
     if (!input || input.dataset.ac) return; input.dataset.ac = '1';
     const wrap = el('div', { class: 'ac-wrap' }); input.parentNode.insertBefore(wrap, input); wrap.appendChild(input);
@@ -92,7 +92,6 @@
       input.addEventListener('keydown', e => { if (!pop.classList.contains('show')) return; if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); render(); } else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); } else if (e.key === 'Enter') { if (active >= 0) { e.preventDefault(); commit(items[active]); } } else if (e.key === 'Escape') close(); });
     });
   }
-
   function decorateInputs(root) {
     attachHankakuAll(root);
     ['#f_store', '#pl_store', '#wi_store'].forEach(sel => { const i = $(sel, root || document); if (i) attachAC(i, storeCands); });
@@ -111,16 +110,16 @@
 
   function currentYM() { return $('#ym').value || M.curYM(); }
   function shiftMonth(delta) { const [y, m] = currentYM().split('-').map(Number); const d = new Date(y, m - 1 + delta, 1); $('#ym').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); onMonthChange(); }
-  function onMonthChange() { renderSummary(); renderReport(); renderDrill(); renderBudget(); if (!$('#tab-list').hidden) { $('#fltYm').value = currentYM(); renderList(); } }
+  function onMonthChange() { renderReport(); renderDrill(); renderBudget(); if (!$('#tab-list').hidden) { $('#fltYm').value = currentYM(); renderList(); } }
 
-  /* ============ 入力フォーム ============ */
+  /* ============ 入力フォーム（サマリなし） ============ */
   function dateField() { return `<div class="field"><label>日付</label><div class="date-wrap"><input type="date" id="f_date" value="${ui._date || M.todayStr()}"><button type="button" class="today-btn" id="f_today">今日</button></div></div>`; }
   function storeRow() { return `<div class="row"><div class="field" style="flex:2"><label>店名</label><input id="f_store" list="dl-store" value="${esc(ui._store)}" placeholder="例: スーパーマルエツ"></div><div class="field"><label>支店名</label><input id="f_branch" list="dl-branch" value="${esc(ui._branch)}" placeholder="例: 駅前店"></div>${dateField()}</div>`; }
   function memoRow() { return `<div class="field"><label>メモ（任意）</label><textarea id="f_memo" rows="1">${esc(ui._memo)}</textarea></div>`; }
   function bindCommon() { const td = $('#f_today'); if (td) td.addEventListener('click', () => { $('#f_date').value = M.todayStr(); ui._date = M.todayStr(); }); const dt = $('#f_date'); if (dt) dt.addEventListener('change', () => ui._date = dt.value); }
 
   function renderEntry() {
-    renderSummary(); renderEditBanner();
+    renderEditBanner();
     $$('#typebar button').forEach(b => b.classList.toggle('active', b.dataset.type === ui.type));
     const host = $('#entryForm'); const type = ui.type;
     if (type === 'expense') {
@@ -209,8 +208,6 @@
   }
   function openCardPayEditModal(t) { const cardId = t.meta.cardAccId; const credits = t.lines.filter(l => l.amount < 0).map(l => ({ accId: l.ref.slice(4), amount: -l.amount })); const cyc = M.cardCycles(state, cardId).find(c => c.key === t.meta.cycleKey); const outstanding = cyc ? cyc.charge - (cyc.paid - credits.reduce((s, c) => s + c.amount, 0)) : credits.reduce((s, c) => s + c.amount, 0); payModalContent('カード引落の編集', cardId, t.meta.cycleKey, t.meta.payDate, outstanding, t.date, credits, t.id); showModal(); }
 
-  function renderSummary() { const ym = currentYM(); const s = M.monthlySummary(state, ym); const cards = [['収入', s.income, 'pos'], ['支出', s.expense, 'neg'], ['収支', s.net, s.net >= 0 ? 'pos' : 'neg'], ['取引数', state.transactions.filter(t => t.date.startsWith(ym)).length, '']]; const host = $('#summaryCards'); if (host) host.innerHTML = cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}（${ym}）</div><div class="v ${c}">${k === '取引数' ? v + ' 件' : yen(v)}</div></div>`).join(''); }
-
   /* ============ 取引一覧 ============ */
   const KIND_TAG = { expense: ['exp', '支出'], income: ['inc', '収入'], transfer: ['mv', '振替'], card_payment: ['mv', 'カード引落'], prepaid_amount: ['mv', '前払(金)'], prepaid_goods: ['mv', '前払(物)'], goods_use: ['exp', '現物利用'], generic: ['mv', '—'] };
   function filteredRows() { const ym = $('#fltYm').value, catTop = $('#fltCat').value, kind = $('#fltKind').value, kw = ($('#fltText').value || '').trim(); let rows = state.transactions.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)); if (ym) rows = rows.filter(t => t.date.startsWith(ym)); if (catTop) rows = rows.filter(t => t.lines.some(l => l.ref.startsWith('cat:') && l.ref.includes('>' + catTop))); if (kind) rows = rows.filter(t => t.kind === kind); if (kw) rows = rows.filter(t => { const catText = t.lines.filter(l => l.ref.startsWith('cat:')).map(l => l.ref.slice(4)).join(' '); return (t.store + ' ' + t.branch + ' ' + t.memo + ' ' + catText).includes(kw); }); return rows; }
@@ -221,13 +218,13 @@
     const tbody = $('#txTable tbody');
     tbody.innerHTML = rows.map(t => { const debit = t.lines.filter(l => l.amount > 0).map(l => refLabel(l.ref)).join(', '); const credit = t.lines.filter(l => l.amount < 0).map(l => refLabel(l.ref) + (l.qty ? `(${-l.qty}枚)` : '')).join(' + '); const amt = t.lines.filter(l => l.amount > 0).reduce((s, l) => s + l.amount, 0); const [cls, lab] = KIND_TAG[t.kind] || KIND_TAG.generic; return `<tr class="${selected.has(t.id) ? 'sel' : ''}" data-id="${t.id}"><td class="chk"><input type="checkbox" class="rowchk" ${selected.has(t.id) ? 'checked' : ''}></td><td>${t.date}</td><td><span class="tag ${cls}">${lab}</span></td><td>${esc(debit)}</td><td class="muted">${esc(credit)}</td><td>${esc(t.store)}${t.branch ? ' <span class="muted">/ ' + esc(t.branch) + '</span>' : ''}</td><td class="num">${yen(amt)}</td><td style="white-space:nowrap"><button class="btn ghost sm" data-edit="${t.id}">編集</button> <button class="btn danger sm" data-del="${t.id}">削除</button></td></tr>`; }).join('') || `<tr><td colspan="8" class="muted" style="text-align:center; padding:20px">取引がありません</td></tr>`;
     $$('.rowchk', tbody).forEach(chk => chk.addEventListener('change', e => { const id = e.target.closest('tr').dataset.id; if (e.target.checked) selected.add(id); else selected.delete(id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulkBar(); syncChkAll(rows); }));
-    $$('[data-del]', tbody).forEach(b => b.addEventListener('click', () => { if (!confirm('この取引を削除しますか？')) return; state.transactions = state.transactions.filter(t => t.id !== b.dataset.del); selected.delete(b.dataset.del); persist(); renderList(); renderAccounts(); renderReport(); renderSummary(); renderCards(); renderDrill(); renderBudget(); toast('削除しました'); }));
+    $$('[data-del]', tbody).forEach(b => b.addEventListener('click', () => { if (!confirm('この取引を削除しますか？')) return; state.transactions = state.transactions.filter(t => t.id !== b.dataset.del); selected.delete(b.dataset.del); persist(); renderList(); renderAccounts(); renderReport(); renderCards(); renderDrill(); renderBudget(); toast('削除しました'); }));
     $$('[data-edit]', tbody).forEach(b => b.addEventListener('click', () => loadForEdit(b.dataset.edit)));
     syncChkAll(rows); renderBulkBar();
   }
   function gotoListWithKeyword(kw) { switchTab('list'); $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = kw; renderList(); toast(`「${kw}」で取引を検索`); }
   function syncChkAll(rows) { const all = $('#chkAll'); if (!all) return; const n = rows.length; const sel = rows.filter(r => selected.has(r.id)).length; all.checked = n > 0 && sel === n; all.indeterminate = sel > 0 && sel < n; }
-  function renderBulkBar() { const bar = $('#bulkBar'); if (!bar) return; if (!selected.size) { bar.innerHTML = ''; return; } bar.innerHTML = `<div class="bulkbar"><span class="cnt">${selected.size}件を選択中</span><span class="spacer"></span><button class="btn ghost sm" id="bulkRecat">カテゴリを付け替え</button><button class="btn danger sm" id="bulkDel">一括削除</button><button class="btn ghost sm" id="bulkClear">選択解除</button></div>`; $('#bulkClear').addEventListener('click', () => { selected.clear(); renderList(); }); $('#bulkDel').addEventListener('click', () => { if (!confirm(`選択した ${selected.size}件を削除します。よろしいですか？`)) return; state.transactions = state.transactions.filter(t => !selected.has(t.id)); selected.clear(); persist(); renderList(); renderAccounts(); renderReport(); renderSummary(); renderCards(); renderDrill(); renderBudget(); toast('一括削除しました ✓'); }); $('#bulkRecat').addEventListener('click', openBulkRecatModal); }
+  function renderBulkBar() { const bar = $('#bulkBar'); if (!bar) return; if (!selected.size) { bar.innerHTML = ''; return; } bar.innerHTML = `<div class="bulkbar"><span class="cnt">${selected.size}件を選択中</span><span class="spacer"></span><button class="btn ghost sm" id="bulkRecat">カテゴリを付け替え</button><button class="btn danger sm" id="bulkDel">一括削除</button><button class="btn ghost sm" id="bulkClear">選択解除</button></div>`; $('#bulkClear').addEventListener('click', () => { selected.clear(); renderList(); }); $('#bulkDel').addEventListener('click', () => { if (!confirm(`選択した ${selected.size}件を削除します。よろしいですか？`)) return; state.transactions = state.transactions.filter(t => !selected.has(t.id)); selected.clear(); persist(); renderList(); renderAccounts(); renderReport(); renderCards(); renderDrill(); renderBudget(); toast('一括削除しました ✓'); }); $('#bulkRecat').addEventListener('click', openBulkRecatModal); }
   function openBulkRecatModal() {
     const ids = [...selected]; const targets = state.transactions.filter(t => ids.includes(t.id)); const fromSet = new Map();
     targets.forEach(t => t.lines.forEach(l => { if (l.ref.startsWith('cat:exp>')) { const p = l.ref.slice(4); fromSet.set(p, (fromSet.get(p) || 0) + 1); } }));
@@ -239,15 +236,46 @@
     showModal();
   }
 
-  /* ============ カテゴリ分析 ============ */
+  /* ============ 分析（収支＝俯瞰／費用・収入＝ドリル） ============ */
   function renderDrill() {
-    if ($('#tab-drill').hidden) return; const ym = currentYM(); const kind = drill.kind;
-    const crumbs = [`<span class="seg" data-depth="0">${kind === 'income' ? '収入' : '費用'} 全体</span>`]; drill.parts.forEach((p, i) => { crumbs.push(`<span class="sep">›</span>`); crumbs.push(`<span class="seg" data-depth="${i + 1}">${esc(p)}</span>`); }); $('#drillCrumb').innerHTML = crumbs.join(' '); $$('#drillCrumb .seg').forEach(s => s.addEventListener('click', () => { drill.parts = drill.parts.slice(0, +s.dataset.depth); drill.leaf = null; renderDrill(); }));
-    const res = M.drillCategory(state, ym, kind, drill.parts); const entries = res.children.map(c => [c.segment, c.total]); $('#drillDonut').innerHTML = drawDonut(entries, res.total, true).svg; const max = Math.max(1, ...res.children.map(c => c.total));
-    $('#drillList').innerHTML = res.children.length ? res.children.map((c, i) => { const bud = M.budgetForCategory(state, ym, kind, c.path); let budHtml = ''; if (bud) { const bp = Math.round(bud.ratio * 100); const bcls = bud.ratio >= 1 ? 'over' : (bud.ratio >= 0.8 ? 'warn' : ''); budHtml = `<div class="drill-bud"><span class="muted">予算 ${yen(bud.effective)} ・ ${bp}%</span><span class="bar ${bcls}"><span style="width:${Math.min(100, bp)}%"></span></span><span class="${bud.remain < 0 ? 'neg' : 'pos'}">残 ${yen(bud.remain)}</span></div>`; } return `<div class="drill-row ${c.hasChildren ? '' : 'leaf'}" data-seg="${esc(c.segment)}" data-leaf="${c.hasChildren ? 0 : 1}"><div style="flex:1"><div style="display:flex;align-items:center;gap:10px"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${PALETTE[i % PALETTE.length]}"></span><span class="dn">${esc(c.segment)}</span><span class="dbar"><span class="bar"><span style="width:${c.total / max * 100}%"></span></span></span><span class="dpct">${M.pct(c.total, res.total)}%</span><span class="dv">${yen(c.total)}</span><span class="dc">${c.count}件</span><span class="drill-arrow">${c.hasChildren ? '▶' : ''}</span></div>${budHtml}</div></div>`; }).join('') : `<p class="muted">この月の${kind === 'income' ? '収入' : '支出'}はありません。</p>`;
-    $$('#drillList .drill-row').forEach(row => row.addEventListener('click', () => { const seg = row.dataset.seg; if (row.dataset.leaf === '0') { drill.parts = drill.parts.concat(seg); drill.leaf = null; } else drill.leaf = seg; renderDrill(); }));
+    if ($('#tab-drill').hidden) return;
+    const ym = currentYM(); const kind = drill.kind; const body = $('#drillBody');
+    const sel = $('#drillKind'); if (sel && sel.value !== kind) sel.value = kind;
+    if (kind === 'net') { renderOverview(body, ym); }
+    else { renderDrilldown(body, ym, kind); }
+  }
+  function gotoDrill(kind) { drill.kind = kind; drill.parts = []; drill.leaf = null; const sel = $('#drillKind'); if (sel) sel.value = kind; renderDrill(); }
+
+  function renderOverview(body, ym) {
+    const s = M.monthlySummary(state, ym);
+    const txCount = state.transactions.filter(t => t.date.startsWith(ym)).length;
+    const savings = s.income > 0 ? Math.round(s.net / s.income * 100) : 0;
+    const cards = [['収入', s.income, 'pos'], ['支出', s.expense, 'neg'], ['収支', s.net, s.net >= 0 ? 'pos' : 'neg'], ['取引数', txCount, '']];
+    const cardsHtml = `<div class="grid cols-4" style="margin-bottom:12px">` + cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}（${ym}）</div><div class="v ${c}">${k === '取引数' ? v + ' 件' : yen(v)}</div>${k === '収支' && s.income > 0 ? `<div class="sub">貯蓄率 ${savings}%</div>` : ''}</div>`).join('') + `</div>`;
+    const mx = Math.max(1, s.income, s.expense);
+    const barsHtml = `<div class="ov-bars"><div class="ov-bar inc"><div class="cap"><span>収入</span><span>${yen(s.income)}</span></div><div class="track"><span style="width:${s.income / mx * 100}%"></span></div></div><div class="ov-bar exp"><div class="cap"><span>支出</span><span>${yen(s.expense)}</span></div><div class="track"><span style="width:${s.expense / mx * 100}%"></span></div></div></div>`;
+    // 費用 概況
+    const eb = M.expenseByTopCategory(state, ym); const eEntries = Object.entries(eb).sort((a, b) => b[1] - a[1]); const eTotal = eEntries.reduce((a, e) => a + e[1], 0);
+    const eDonut = drawDonut(eEntries.slice(0, 8), eTotal, true);
+    const eList = eEntries.slice(0, 6).map((e, i) => `<div class="drill-row leaf"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${PALETTE[i % PALETTE.length]}"></span><span class="dn">${esc(e[0])}</span><span class="dpct">${M.pct(e[1], eTotal)}%</span><span class="dv">${yen(e[1])}</span></div>`).join('') || `<p class="muted">支出なし</p>`;
+    // 収入 概況
+    const ib = M.incomeByTopCategory(state, ym); const iEntries = Object.entries(ib).sort((a, b) => b[1] - a[1]); const iTotal = iEntries.reduce((a, e) => a + e[1], 0);
+    const iList = iEntries.slice(0, 6).map((e, i) => `<div class="drill-row leaf"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${PALETTE[(i + 3) % PALETTE.length]}"></span><span class="dn">${esc(e[0])}</span><span class="dpct">${M.pct(e[1], iTotal)}%</span><span class="dv">${yen(e[1])}</span></div>`).join('') || `<p class="muted">収入なし</p>`;
+    body.innerHTML = cardsHtml + barsHtml + `<div class="ov-cols">
+      <div class="ov-col"><h4>費用の内訳 <span class="goto" data-goto="expense">費用を掘り下げる ›</span></h4><div class="chart-wrap" style="margin-bottom:8px">${eDonut.svg}<div style="flex:1;min-width:180px">${eList}</div></div></div>
+      <div class="ov-col"><h4>収入の内訳 <span class="goto" data-goto="income">収入を掘り下げる ›</span></h4>${iList}</div>
+    </div>`;
+    $$('[data-goto]', body).forEach(b => b.addEventListener('click', () => gotoDrill(b.dataset.goto)));
+  }
+
+  function renderDrilldown(body, ym, kind) {
+    body.innerHTML = `<div class="crumb" id="drillCrumb"></div><div class="chart-wrap" style="margin-bottom:16px"><div id="drillDonut"></div><div class="donut-legend" id="drillList" style="min-width:280px"></div></div><div id="drillDetail"></div>`;
+    const crumbs = [`<span class="seg" data-depth="0">${kind === 'income' ? '収入' : '費用'} 全体</span>`]; drill.parts.forEach((p, i) => { crumbs.push(`<span class="sep">›</span>`); crumbs.push(`<span class="seg" data-depth="${i + 1}">${esc(p)}</span>`); }); $('#drillCrumb', body).innerHTML = crumbs.join(' '); $$('#drillCrumb .seg', body).forEach(s => s.addEventListener('click', () => { drill.parts = drill.parts.slice(0, +s.dataset.depth); drill.leaf = null; renderDrill(); }));
+    const res = M.drillCategory(state, ym, kind, drill.parts); const entries = res.children.map(c => [c.segment, c.total]); $('#drillDonut', body).innerHTML = drawDonut(entries, res.total, true).svg; const max = Math.max(1, ...res.children.map(c => c.total));
+    $('#drillList', body).innerHTML = res.children.length ? res.children.map((c, i) => { const bud = M.budgetForCategory(state, ym, kind, c.path); let budHtml = ''; if (bud) { const bp = Math.round(bud.ratio * 100); const bcls = bud.ratio >= 1 ? 'over' : (bud.ratio >= 0.8 ? 'warn' : ''); budHtml = `<div class="drill-bud"><span class="muted">予算 ${yen(bud.effective)} ・ ${bp}%</span><span class="bar ${bcls}"><span style="width:${Math.min(100, bp)}%"></span></span><span class="${bud.remain < 0 ? 'neg' : 'pos'}">残 ${yen(bud.remain)}</span></div>`; } return `<div class="drill-row ${c.hasChildren ? '' : 'leaf'}" data-seg="${esc(c.segment)}" data-leaf="${c.hasChildren ? 0 : 1}"><div style="flex:1"><div style="display:flex;align-items:center;gap:10px"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${PALETTE[i % PALETTE.length]}"></span><span class="dn">${esc(c.segment)}</span><span class="dbar"><span class="bar"><span style="width:${c.total / max * 100}%"></span></span></span><span class="dpct">${M.pct(c.total, res.total)}%</span><span class="dv">${yen(c.total)}</span><span class="dc">${c.count}件</span><span class="drill-arrow">${c.hasChildren ? '▶' : ''}</span></div>${budHtml}</div></div>`; }).join('') : `<p class="muted">この月の${kind === 'income' ? '収入' : '支出'}はありません。</p>`;
+    $$('#drillList .drill-row', body).forEach(row => row.addEventListener('click', () => { const seg = row.dataset.seg; if (row.dataset.leaf === '0') { drill.parts = drill.parts.concat(seg); drill.leaf = null; } else drill.leaf = seg; renderDrill(); }));
     const detailParts = drill.leaf ? drill.parts.concat(drill.leaf) : drill.parts; const txs = M.transactionsForCategory(state, ym, kind, detailParts); const title = detailParts.length ? detailParts.join(' › ') : '全明細';
-    $('#drillDetail').innerHTML = `<div class="section-title" style="margin-top:8px"><h3 style="margin:0">明細：${esc(title)}</h3><span class="pill">${txs.length}件 ・ 計 ${yen(txs.reduce((s, x) => s + x.amount, 0))}</span></div><div style="overflow:auto; max-height:40vh"><table><thead><tr><th>日付</th><th>カテゴリ</th><th>店名</th><th>メモ</th><th class="num">金額</th></tr></thead><tbody>${txs.map(x => `<tr><td>${x.date}</td><td>${esc(x.leaf)}</td><td>${esc(x.store)}${x.branch ? ' <span class="muted">/ ' + esc(x.branch) + '</span>' : ''}</td><td class="muted">${esc(x.memo)}</td><td class="num">${yen(x.amount)}</td></tr>`).join('') || `<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">明細なし</td></tr>`}</tbody></table></div>`;
+    $('#drillDetail', body).innerHTML = `<div class="section-title" style="margin-top:8px"><h3 style="margin:0">明細：${esc(title)}</h3><span class="pill">${txs.length}件 ・ 計 ${yen(txs.reduce((s, x) => s + x.amount, 0))}</span></div><div style="overflow:auto; max-height:40vh"><table><thead><tr><th>日付</th><th>カテゴリ</th><th>店名</th><th>メモ</th><th class="num">金額</th></tr></thead><tbody>${txs.map(x => `<tr><td>${x.date}</td><td>${esc(x.leaf)}</td><td>${esc(x.store)}${x.branch ? ' <span class="muted">/ ' + esc(x.branch) + '</span>' : ''}</td><td class="muted">${esc(x.memo)}</td><td class="num">${yen(x.amount)}</td></tr>`).join('') || `<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">明細なし</td></tr>`}</tbody></table></div>`;
   }
 
   /* ============ 残高・口座 ============ */
@@ -322,7 +350,6 @@
   function renderCatTree() { const kind = $('#catKind').value, root = state.categories[kind]; let html = ''; for (const top of Object.keys(root)) { html += `<div style="margin-bottom:6px"><b>${esc(top)}</b> `; const parts = []; for (const mid of Object.keys(root[top] || {})) { const leaves = root[top][mid] || []; parts.push(`<span class="tag">${esc(mid)}${leaves.length ? '：' + leaves.map(esc).join('・') : ''}</span>`); } html += parts.join(' ') + `</div>`; } $('#catTree').innerHTML = html || '<p class="muted">カテゴリなし</p>'; }
   function addCategory() { const kind = $('#catKind').value, top = $('#catTop').value.trim(), mid = $('#catMid').value.trim(), leaf = $('#catLeaf').value.trim(); if (!top) return toast('大カテゴリは必須です'); const root = state.categories[kind]; if (!root[top]) root[top] = {}; if (mid) { if (!root[top][mid]) root[top][mid] = []; if (leaf && !root[top][mid].includes(leaf)) root[top][mid].push(leaf); } persist(); renderCatTree(); refreshDatalists(); $('#catMid').value = ''; $('#catLeaf').value = ''; toast('カテゴリを追加しました ✓'); }
 
-  /* ---- 読み仮名 ---- */
   function renderReadings() {
     const host = $('#readingList'); if (!host) return; const entries = Object.entries(state.readings || {});
     host.innerHTML = entries.length ? entries.sort((a, b) => a[0].localeCompare(b[0], 'ja')).map(([k, v]) => `<div class="reading-row"><span class="rk">${esc(k)}</span><span class="ry">${esc(v)}</span><div class="row" style="gap:6px"><button class="btn ghost sm" data-rdedit="${esc(k)}">編集</button><button class="btn danger sm" data-rddel="${esc(k)}">削除</button></div></div>`).join('') : `<p class="muted">読み仮名の登録はありません。入力時に自動記録されるほか、ここで手動追加できます。</p>`;
@@ -337,7 +364,6 @@
     showModal();
   }
 
-  /* ---- レシートテンプレート ---- */
   function renderTplBar() {
     const bar = $('#tplBar'); if (!bar) return;
     if (!state.templates.length) bar.innerHTML = `<span class="lbl">テンプレなし（設定で追加）</span> <button class="tpl-chip" id="tplSaveCur">＋現在の入力を保存</button>`;
@@ -359,7 +385,6 @@
     draw(); showModal();
   }
 
-  /* ---- データ入出力 ---- */
   function download(name, text, type) { const blob = new Blob([text], { type }); const a = el('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
   function exportJSON() { download(`kakeibo_${M.todayStr()}.json`, JSON.stringify(state, null, 2), 'application/json'); toast('書き出しました'); }
   function exportCSV() { download(`kakeibo_${M.todayStr()}.csv`, '\ufeff' + M.serializeCSV(state), 'text/csv;charset=utf-8'); toast('CSVを書き出しました'); }
@@ -380,7 +405,7 @@
     $$('[data-buddel]', $('#budgetList')).forEach(b => b.addEventListener('click', () => { delete state.budgets[b.dataset.buddel]; persist(); renderBudget(); renderDrill(); toast('予算を削除しました'); }));
     renderGoals();
   }
-  function openBudgetModal(catPath) { const editing = catPath != null; const cur = editing ? state.budgets[catPath] : 0; const opts = M.budgetableCategories(state.categories).map(c => `<option value="${c.path}" ${c.path === catPath ? 'selected' : ''}>${c.label}</option>`).join(''); $('#modal').innerHTML = `<h3>${editing ? '予算を編集' : '予算を設定'}</h3><div class="field"><label>カテゴリ（大/中/小どの階層でもOK）</label><select id="bud_cat" class="catsel" ${editing ? 'disabled' : ''}>${opts}</select></div><div class="field"><label>月予算</label><input type="number" id="bud_amt" value="${cur || ''}" placeholder="例: 40000"></div><p class="hint">この階層＋配下すべての支出を合計。カテゴリ分析画面にも表示されます。</p><div class="actions"><button class="btn ghost" id="bud_cancel">キャンセル</button><button class="btn" id="bud_ok">保存</button></div>`; $('#bud_cancel').addEventListener('click', closeModal); $('#bud_ok').addEventListener('click', () => { const path = editing ? catPath : $('#bud_cat').value; const amt = +$('#bud_amt').value; if (!amt) return toast('金額を入れてください'); state.budgets[path] = amt; persist(); closeModal(); renderBudget(); renderDrill(); toast('保存しました ✓'); }); showModal(); }
+  function openBudgetModal(catPath) { const editing = catPath != null; const cur = editing ? state.budgets[catPath] : 0; const opts = M.budgetableCategories(state.categories).map(c => `<option value="${c.path}" ${c.path === catPath ? 'selected' : ''}>${c.label}</option>`).join(''); $('#modal').innerHTML = `<h3>${editing ? '予算を編集' : '予算を設定'}</h3><div class="field"><label>カテゴリ（大/中/小どの階層でもOK）</label><select id="bud_cat" class="catsel" ${editing ? 'disabled' : ''}>${opts}</select></div><div class="field"><label>月予算</label><input type="number" id="bud_amt" value="${cur || ''}" placeholder="例: 40000"></div><p class="hint">この階層＋配下すべての支出を合計。分析画面にも表示されます。</p><div class="actions"><button class="btn ghost" id="bud_cancel">キャンセル</button><button class="btn" id="bud_ok">保存</button></div>`; $('#bud_cancel').addEventListener('click', closeModal); $('#bud_ok').addEventListener('click', () => { const path = editing ? catPath : $('#bud_cat').value; const amt = +$('#bud_amt').value; if (!amt) return toast('金額を入れてください'); state.budgets[path] = amt; persist(); closeModal(); renderBudget(); renderDrill(); toast('保存しました ✓'); }); showModal(); }
 
   function effectiveSurplus() { return (simSurplus != null) ? simSurplus : M.avgMonthlySurplus(state, currentYM(), 3); }
   function renderGoals() {
@@ -458,9 +483,9 @@
   function fmtNorm(n) { return (Math.round(n.value * 100) / 100).toLocaleString('ja-JP') + ' ' + n.label; }
   function openPriceModal(id) { const editing = id ? state.priceLogs.find(p => p.id === id) : null; const e = editing || { id: 'pl_' + Math.random().toString(36).slice(2, 8), item: '', date: M.todayStr(), store: '', branch: '', price: 0, qty: 0, unit: '総額', note: '' }; $('#modal').innerHTML = `<h3>${editing ? '価格を編集' : '価格を記録'}</h3><div class="field"><label>品目</label><input id="pl_item" list="dl-item" value="${esc(e.item)}" placeholder="例: 卵(10個) / 牛乳 / 鶏むね肉"></div><div class="row"><div class="field"><label>日付</label><input type="date" id="pl_date" value="${e.date}"></div><div class="field" style="flex:2"><label>店名</label><input id="pl_store" list="dl-store" value="${esc(e.store)}"></div><div class="field"><label>支店</label><input id="pl_branch" list="dl-branch" value="${esc(e.branch)}"></div></div><div class="row"><div class="field"><label>価格</label><input type="number" id="pl_price" value="${e.price || ''}"></div><div class="field"><label>数量</label><input type="number" id="pl_qty" value="${e.qty || ''}"></div><div class="field"><label>単位</label><select id="pl_unit">${PRICE_UNITS.map(u => `<option ${u === e.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div><div class="acc-sub" id="pl_preview" style="margin-bottom:8px"></div><div class="field"><label>メモ</label><input id="pl_note" value="${esc(e.note || '')}"></div><div class="actions"><button class="btn ghost" id="pl_cancel">キャンセル</button><button class="btn" id="pl_ok">保存</button></div>`; const upd = () => { const n = M.normalizedUnitPrice({ price: +$('#pl_price').value, qty: +$('#pl_qty').value, unit: $('#pl_unit').value }); $('#pl_preview').textContent = n ? '実質単価 ≈ ' + fmtNorm(n) : '数量を入れると実質単価を計算します'; }; ['#pl_price', '#pl_qty', '#pl_unit'].forEach(s => $(s).addEventListener('input', upd)); upd(); $('#pl_cancel').addEventListener('click', closeModal); $('#pl_ok').addEventListener('click', () => { const item = $('#pl_item').value.trim(); if (!item) return toast('品目を入れてください'); const price = +$('#pl_price').value; if (!price) return toast('価格を入れてください'); const data = { item, date: $('#pl_date').value, store: $('#pl_store').value, branch: $('#pl_branch').value, price, qty: +$('#pl_qty').value || 0, unit: $('#pl_unit').value, note: $('#pl_note').value }; if (editing) Object.assign(editing, data); else { M.addPriceLog(state, data); priceOpen.add(item); } persist(); refreshDatalists(); closeModal(); renderPrice(); toast('保存しました ✓'); }); showModal(); }
 
-  /* ============ ナビ（下タブ＋ドロワー＋タブ） ============ */
+  /* ============ ナビ ============ */
   const TABS = ['entry', 'list', 'drill', 'budget', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
-  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: 'カテゴリ分析', budget: '予算・積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
+  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: '分析', budget: '予算・積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
   const BOTTOM_TABS = ['entry', 'list', 'drill', 'budget'];
   function renderDrawer() {
     const groups = [
@@ -475,7 +500,7 @@
   }
   function openDrawer() { renderDrawerActive(); $('#drawer').classList.add('show'); $('#drawerBg').classList.add('show'); }
   function closeDrawer() { $('#drawer').classList.remove('show'); $('#drawerBg').classList.remove('show'); }
-  function renderDrawerActive() { const name = curTab; $$('#drawerBody [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name)); }
+  function renderDrawerActive() { $$('#drawerBody [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === curTab)); }
   let curTab = 'entry';
   function renderNav(name) {
     curTab = name;
@@ -484,7 +509,6 @@
     renderDrawerActive();
     const ct = $('#curTabName'); if (ct) ct.textContent = TAB_LABEL[name] || '';
   }
-
   function switchTab(name) {
     TABS.forEach(t => { const el = $('#tab-' + t); if (el) el.hidden = (t !== name); });
     renderNav(name);

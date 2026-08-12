@@ -74,6 +74,7 @@
   function catKindOf(ref) { return ref.startsWith('cat:inc>') ? 'income' : 'expense'; }
   function monthlySummary(state, ym) { let income = 0, expense = 0; for (const t of state.transactions) { if (!t.date.startsWith(ym)) continue; for (const ln of t.lines) { if (!ln.ref.startsWith('cat:')) continue; if (catKindOf(ln.ref) === 'income') income += -ln.amount; else expense += ln.amount; } } return { income, expense, net: income - expense }; }
   function expenseByTopCategory(state, ym) { const map = {}; for (const t of state.transactions) { if (!t.date.startsWith(ym)) continue; for (const ln of t.lines) if (ln.ref.startsWith('cat:exp>') && ln.amount > 0) { const top = ln.ref.slice('cat:exp>'.length).split('>')[0]; map[top] = (map[top] || 0) + ln.amount; } } return map; }
+  function incomeByTopCategory(state, ym) { const map = {}; for (const t of state.transactions) { if (!t.date.startsWith(ym)) continue; for (const ln of t.lines) if (ln.ref.startsWith('cat:inc>') && ln.amount < 0) { const top = ln.ref.slice('cat:inc>'.length).split('>')[0]; map[top] = (map[top] || 0) + (-ln.amount); } } return map; }
   function trailingMonths(ym, n) { const [y, m] = ym.split('-').map(Number); const out = []; for (let i = n - 1; i >= 0; i--) { const d = new Date(y, m - 1 - i, 1); out.push(d.getFullYear() + '-' + pad2(d.getMonth() + 1)); } return out; }
 
   function drillCategory(state, ym, kind, parts) { const pfx = kind === 'income' ? 'cat:inc>' : 'cat:exp>'; parts = parts || []; const depth = parts.length; const children = {}; let total = 0; for (const t of state.transactions) { if (ym && !t.date.startsWith(ym)) continue; for (const ln of t.lines) { if (!ln.ref.startsWith(pfx)) continue; const val = kind === 'income' ? -ln.amount : ln.amount; if (val <= 0) continue; const segs = ln.ref.slice(pfx.length).split('>'); let match = true; for (let i = 0; i < depth; i++) if (segs[i] !== parts[i]) { match = false; break; } if (!match) continue; total += val; const seg = segs[depth] != null ? segs[depth] : '(なし)'; const c = children[seg] || (children[seg] = { total: 0, count: 0, deeper: false }); c.total += val; c.count += 1; if (segs.length > depth + 1) c.deeper = true; } } const list = Object.entries(children).map(([segment, c]) => ({ segment, path: parts.concat(segment), total: c.total, count: c.count, hasChildren: c.deeper })).sort((a, b) => b.total - a.total); return { children: list, total, path: parts }; }
@@ -207,12 +208,15 @@
     P(buildExpense({ date: '2026-07-02', catPath: 'exp>住居>家賃', amount: 78000, credits: [{ accId: 'a_bank', amount: 78000 }], store: '管理会社' }));
     P(buildExpense({ date: '2026-07-06', items: [{ catPath: 'exp>食費>食材>肉・魚', amount: 1580 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 720 }, { catPath: 'exp>食費>食材>乳・卵', amount: 430 }], credits: [{ accId: 'a_cash', amount: 1930 }, { accId: 'a_rpt', amount: 800 }], store: 'スーパーマルエツ', branch: '駅前店' }));
     P(buildExpense({ date: '2026-07-10', catPath: 'exp>食費>外食>ディナー', amount: 3600, credits: [{ accId: 'a_rcard', amount: 3600 }], store: '居酒屋とり平' }));
+    P(buildIncome({ date: '2026-07-25', accId: 'a_rpt', catPath: 'inc>ポイント獲得', amount: 420, store: '楽天' }));
     P(buildExpense({ date: '2026-07-20', catPath: 'exp>通信費>携帯', amount: 2980, credits: [{ accId: 'a_rcard', amount: 2480 }, { accId: 'a_rpt', amount: 500 }], store: '楽天モバイル', memo: 'ポイント一部充当' }));
     P(buildExpense({ date: '2026-08-02', catPath: 'exp>住居>家賃', amount: 78000, credits: [{ accId: 'a_bank', amount: 78000 }], store: '管理会社' }));
+    P(buildIncome({ date: '2026-08-25', accId: 'a_bank', catPath: 'inc>給与', amount: 285000, store: '勤務先' }));
     P(buildExpense({ date: '2026-08-03', items: [{ catPath: 'exp>食費>食材>肉・魚', amount: 1420 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 880 }, { catPath: 'exp>食費>食材>調味料・油', amount: 520 }], credits: [{ accId: 'a_cash', amount: 2820 }], store: 'スーパーマルエツ', branch: '駅前店' }));
     P(buildExpense({ date: '2026-08-05', catPath: 'exp>食費>外食>ランチ', amount: 1250, credits: [{ accId: 'a_rcard', amount: 1250 }], store: '定食屋つくし' }));
     P(buildExpense({ date: '2026-08-09', catPath: 'exp>趣味・娯楽>書籍', amount: 1200, credits: [{ accId: 'a_book', amount: 1200 }], store: '紀伊國屋書店', branch: '新宿本店' }));
     P(buildExpense({ date: '2026-08-10', catPath: 'exp>交際費>飲み会', amount: 4200, credits: [{ accId: 'a_rcard', amount: 4200 }], store: '居酒屋とり平' }));
+    P(buildIncome({ date: '2026-08-15', accId: 'a_bank', catPath: 'inc>副収入', amount: 25000, store: '副業' }));
     s.transactions = T; s.meta.dummy = true;
     return s;
   }
@@ -222,7 +226,7 @@
     initialState, defaultAccounts, makeDummy, migrate,
     toHankaku, normReading, matchCandidates,
     jpHolidays, isHoliday, holidayName, isBusinessDay, adjustBusinessDay,
-    accountBalance, goodsQty, monthlySummary, expenseByTopCategory, trailingMonths,
+    accountBalance, goodsQty, monthlySummary, expenseByTopCategory, incomeByTopCategory, trailingMonths,
     drillCategory, transactionsForCategory,
     cardCloseInfo, cardCycles,
     storeCategoryStats, storeBranchDefault, lastStoreComposition, evalAmount, validateTransaction,
