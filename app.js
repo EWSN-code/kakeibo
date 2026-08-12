@@ -1,7 +1,7 @@
 /* =====================================================================
- * app.js ― UI / イベント / 状態管理  (v1)
- *  v0.7 全機能 + カテゴリ検索コンボ + 読み仮名手動編集 + クラウド起動対応
- *  ※ StorageAdapter は cloud.js が提供（load=キャッシュ, save=クラウド同期）
+ * app.js ― UI / イベント / 状態管理  (v1.1 フェーズ1)
+ *  下タブ＋ドロワー / 入力優先 / カテゴリ2行表示 / ほしいもの・価格分離
+ *  ※ StorageAdapter は cloud.js が提供
  * ===================================================================== */
 (function () {
   'use strict';
@@ -35,6 +35,7 @@
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2000); }
   const yen = M.yen;
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+  function isNarrow() { return window.matchMedia('(max-width:760px)').matches; }
 
   /* ---- 全角→半角 ---- */
   function attachHankaku(input) {
@@ -44,7 +45,7 @@
   }
   function attachHankakuAll(root) { $$('input[inputmode="decimal"], input[inputmode="numeric"], input[type="number"]', root || document).forEach(attachHankaku); }
 
-  /* ---- 自前オートコンプリート（店名/支店/品目：読み仮名対応） ---- */
+  /* ---- オートコンプリート（店名/支店/品目：読み仮名対応） ---- */
   function attachAC(input, getCands) {
     if (!input || input.dataset.ac) return; input.dataset.ac = '1';
     const wrap = el('div', { class: 'ac-wrap' }); input.parentNode.insertBefore(wrap, input); wrap.appendChild(input);
@@ -67,24 +68,27 @@
   function branchCands() { const s = new Set(); state.transactions.forEach(t => { if (t.branch) s.add(t.branch); }); return [...s]; }
   function itemCands() { const s = new Set(); (state.priceLogs || []).forEach(p => { if (p.item) s.add(p.item); }); return [...s]; }
 
-  /* ---- カテゴリ検索コンボ（select.catsel を検索入力化） ---- */
+  /* ---- カテゴリ検索コンボ（2行表示・狭画面は小カテゴリのみ） ---- */
+  function catLeaf(label) { const p = label.split(' › '); return p[p.length - 1]; }
+  function catHead(label) { const p = label.split(' › '); return p.slice(0, -1).join(' › '); }
   function enhanceCatSelects(root) {
     $$('select.catsel', root || document).forEach(sel => {
       if (sel.dataset.enh) return; sel.dataset.enh = '1';
       const opts = Array.from(sel.options).map(o => ({ value: o.value, label: o.textContent }));
       const wrap = el('div', { class: 'catcombo' }); sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel); sel.classList.add('cc-native');
       const input = el('input', { class: 'cc-input', type: 'text', placeholder: 'カテゴリを検索…' });
-      const cur = opts.find(o => o.value === sel.value); input.value = cur ? cur.label : '';
+      const disp = o => o ? (isNarrow() ? catLeaf(o.label) : o.label) : '';
+      const cur = opts.find(o => o.value === sel.value); input.value = disp(cur);
       const pop = el('div', { class: 'ac-pop' }); wrap.appendChild(input); wrap.appendChild(pop);
       let items = [], active = -1, composing = false;
       const close = () => { pop.classList.remove('show'); active = -1; };
-      const commit = o => { sel.value = o.value; input.value = o.label; sel.dispatchEvent(new Event('change', { bubbles: true })); close(); };
-      const render = () => { const q = input.value.trim(); const qn = M.normReading(q); items = !q ? opts.slice(0, 40) : opts.filter(o => o.label.includes(q) || M.normReading(o.label).includes(qn)); items = items.slice(0, 40); if (!items.length) { close(); return; } pop.innerHTML = items.map((o, i) => `<div class="ac-item ${i === active ? 'active' : ''}" data-i="${i}">${esc(o.label)}</div>`).join(''); pop.classList.add('show'); $$('.ac-item', pop).forEach(it => it.addEventListener('mousedown', e => { e.preventDefault(); commit(items[+it.dataset.i]); })); };
+      const commit = o => { sel.value = o.value; input.value = disp(o); sel.dispatchEvent(new Event('change', { bubbles: true })); close(); };
+      const render = () => { const q = input.value.trim(); const qn = M.normReading(q); items = !q ? opts.slice(0, 60) : opts.filter(o => o.label.includes(q) || M.normReading(o.label).includes(qn)); items = items.slice(0, 60); if (!items.length) { close(); return; } pop.innerHTML = items.map((o, i) => { const h = catHead(o.label), lf = catLeaf(o.label); return `<div class="ac-item ${i === active ? 'active' : ''}" data-i="${i}">${h ? `<div class="cc-head">${esc(h)}</div>` : ''}<div class="cc-leaf">${esc(lf)}</div></div>`; }).join(''); pop.classList.add('show'); $$('.ac-item', pop).forEach(it => it.addEventListener('mousedown', e => { e.preventDefault(); commit(items[+it.dataset.i]); })); };
       input.addEventListener('compositionstart', () => composing = true);
       input.addEventListener('compositionend', () => { composing = false; render(); });
       input.addEventListener('input', () => { if (!composing) render(); });
-      input.addEventListener('focus', render);
-      input.addEventListener('blur', () => setTimeout(() => { const c = opts.find(o => o.value === sel.value); if (c) input.value = c.label; close(); }, 150));
+      input.addEventListener('focus', () => { input.select && input.select(); render(); });
+      input.addEventListener('blur', () => setTimeout(() => { const c = opts.find(o => o.value === sel.value); if (c) input.value = disp(c); close(); }, 150));
       input.addEventListener('keydown', e => { if (!pop.classList.contains('show')) return; if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); render(); } else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); } else if (e.key === 'Enter') { if (active >= 0) { e.preventDefault(); commit(items[active]); } } else if (e.key === 'Escape') close(); });
     });
   }
@@ -205,8 +209,9 @@
   }
   function openCardPayEditModal(t) { const cardId = t.meta.cardAccId; const credits = t.lines.filter(l => l.amount < 0).map(l => ({ accId: l.ref.slice(4), amount: -l.amount })); const cyc = M.cardCycles(state, cardId).find(c => c.key === t.meta.cycleKey); const outstanding = cyc ? cyc.charge - (cyc.paid - credits.reduce((s, c) => s + c.amount, 0)) : credits.reduce((s, c) => s + c.amount, 0); payModalContent('カード引落の編集', cardId, t.meta.cycleKey, t.meta.payDate, outstanding, t.date, credits, t.id); showModal(); }
 
-  function renderSummary() { const ym = currentYM(); const s = M.monthlySummary(state, ym); const cards = [['収入', s.income, 'pos'], ['支出', s.expense, 'neg'], ['収支', s.net, s.net >= 0 ? 'pos' : 'neg'], ['取引数', state.transactions.filter(t => t.date.startsWith(ym)).length, '']]; $('#summaryCards').innerHTML = cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}（${ym}）</div><div class="v ${c}">${k === '取引数' ? v + ' 件' : yen(v)}</div></div>`).join(''); }
+  function renderSummary() { const ym = currentYM(); const s = M.monthlySummary(state, ym); const cards = [['収入', s.income, 'pos'], ['支出', s.expense, 'neg'], ['収支', s.net, s.net >= 0 ? 'pos' : 'neg'], ['取引数', state.transactions.filter(t => t.date.startsWith(ym)).length, '']]; const host = $('#summaryCards'); if (host) host.innerHTML = cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}（${ym}）</div><div class="v ${c}">${k === '取引数' ? v + ' 件' : yen(v)}</div></div>`).join(''); }
 
+  /* ============ 取引一覧 ============ */
   const KIND_TAG = { expense: ['exp', '支出'], income: ['inc', '収入'], transfer: ['mv', '振替'], card_payment: ['mv', 'カード引落'], prepaid_amount: ['mv', '前払(金)'], prepaid_goods: ['mv', '前払(物)'], goods_use: ['exp', '現物利用'], generic: ['mv', '—'] };
   function filteredRows() { const ym = $('#fltYm').value, catTop = $('#fltCat').value, kind = $('#fltKind').value, kw = ($('#fltText').value || '').trim(); let rows = state.transactions.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)); if (ym) rows = rows.filter(t => t.date.startsWith(ym)); if (catTop) rows = rows.filter(t => t.lines.some(l => l.ref.startsWith('cat:') && l.ref.includes('>' + catTop))); if (kind) rows = rows.filter(t => t.kind === kind); if (kw) rows = rows.filter(t => { const catText = t.lines.filter(l => l.ref.startsWith('cat:')).map(l => l.ref.slice(4)).join(' '); return (t.store + ' ' + t.branch + ' ' + t.memo + ' ' + catText).includes(kw); }); return rows; }
   function renderList() {
@@ -234,6 +239,7 @@
     showModal();
   }
 
+  /* ============ カテゴリ分析 ============ */
   function renderDrill() {
     if ($('#tab-drill').hidden) return; const ym = currentYM(); const kind = drill.kind;
     const crumbs = [`<span class="seg" data-depth="0">${kind === 'income' ? '収入' : '費用'} 全体</span>`]; drill.parts.forEach((p, i) => { crumbs.push(`<span class="sep">›</span>`); crumbs.push(`<span class="seg" data-depth="${i + 1}">${esc(p)}</span>`); }); $('#drillCrumb').innerHTML = crumbs.join(' '); $$('#drillCrumb .seg').forEach(s => s.addEventListener('click', () => { drill.parts = drill.parts.slice(0, +s.dataset.depth); drill.leaf = null; renderDrill(); }));
@@ -244,6 +250,7 @@
     $('#drillDetail').innerHTML = `<div class="section-title" style="margin-top:8px"><h3 style="margin:0">明細：${esc(title)}</h3><span class="pill">${txs.length}件 ・ 計 ${yen(txs.reduce((s, x) => s + x.amount, 0))}</span></div><div style="overflow:auto; max-height:40vh"><table><thead><tr><th>日付</th><th>カテゴリ</th><th>店名</th><th>メモ</th><th class="num">金額</th></tr></thead><tbody>${txs.map(x => `<tr><td>${x.date}</td><td>${esc(x.leaf)}</td><td>${esc(x.store)}${x.branch ? ' <span class="muted">/ ' + esc(x.branch) + '</span>' : ''}</td><td class="muted">${esc(x.memo)}</td><td class="num">${yen(x.amount)}</td></tr>`).join('') || `<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">明細なし</td></tr>`}</tbody></table></div>`;
   }
 
+  /* ============ 残高・口座 ============ */
   function renderAccounts() {
     const assets = accountsBy(a => M.ACCOUNT_SUBTYPES[a.subtype].kind === 'asset' && a.subtype !== 'transit'); const liabs = accountsBy(a => M.ACCOUNT_SUBTYPES[a.subtype].kind === 'liability'); const maxAbs = Math.max(1, ...assets.map(a => Math.abs(M.accountBalance(state, a.id))));
     const accHtml = a => { const bal = M.accountBalance(state, a.id); const extra = a.subtype === 'voucher_goods' ? ` · 残${M.goodsQty(state, a.id)}枚` : ''; const w = Math.min(100, Math.abs(bal) / maxAbs * 100); return `<div class="acc-row"><div><div class="acc-name">${esc(a.name)}</div><div class="acc-sub">${M.ACCOUNT_SUBTYPES[a.subtype].label}${extra}</div><div class="bar"><span style="width:${w}%"></span></div></div><div class="num" style="font-weight:700">${yen(bal)}</div></div>`; };
@@ -262,6 +269,7 @@
     showModal();
   }
 
+  /* ============ カード請求 ============ */
   function renderCards() {
     const host = $('#cardCycles'); if (!host) return; const cards = accountsBy(a => a.subtype === 'card'); if (!cards.length) { host.innerHTML = `<p class="muted">カード口座がありません。「残高・口座」から追加してください。</p>`; return; }
     let html = '';
@@ -285,10 +293,12 @@
   }
   function payAllDue(cardId) { const bank = accountsBy(a => a.subtype === 'bank')[0] || accountsBy(a => a.subtype === 'cash')[0]; if (!bank) return toast('引落元の銀行/現金口座がありません'); const due = M.cardCycles(state, cardId).filter(c => c.due && !c.settled); if (!due.length) return toast('期限到来分はありません'); if (!confirm(`${due.length}件の請求を ${bank.name} からまとめて消込します。よろしいですか？`)) return; due.forEach(c => state.transactions.push(M.buildCardPayment({ date: c.payDate, cardAccId: cardId, credits: [{ accId: bank.id, amount: c.outstanding }], cycleKey: c.key, payDate: c.payDate }))); persist(); renderCards(); renderAccounts(); renderList(); toast(`${due.length}件を消込しました ✓`); }
 
+  /* ============ レポート ============ */
   function renderReport() { const ym = currentYM(); const s = M.monthlySummary(state, ym); const savings = s.income > 0 ? Math.round(s.net / s.income * 100) : 0; const cards = [['収入', yen(s.income), 'pos'], ['支出', yen(s.expense), 'neg'], ['収支', yen(s.net), s.net >= 0 ? 'pos' : 'neg'], ['貯蓄率', savings + ' %', savings >= 0 ? 'pos' : 'neg']]; $('#reportCards').innerHTML = cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}（${ym}）</div><div class="v ${c}">${v}</div></div>`).join(''); const months = M.trailingMonths(ym, 6).map(m => ({ ym: m, ...M.monthlySummary(state, m) })); $('#trendChart').innerHTML = drawTrend(months); const bd = M.expenseByTopCategory(state, ym); const entries = Object.entries(bd).sort((a, b) => b[1] - a[1]); const dc = drawDonut(entries, entries.reduce((s, e) => s + e[1], 0), true); $('#donutChart').innerHTML = dc.svg; $('#donutLegend').innerHTML = dc.legend || `<p class="muted">この月の支出はありません。</p>`; }
   function drawTrend(months) { const W = 640, H = 220, pad = 34, bw = 14, gap = 6; const max = Math.max(1, ...months.map(m => Math.max(m.income, m.expense))); const innerH = H - pad - 20, step = (W - pad) / months.length; let bars = '', axis = '', grid = ''; for (let g = 0; g <= 2; g++) { const y = H - 20 - (innerH * g / 2); grid += `<line x1="${pad}" y1="${y}" x2="${W}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/><text class="trend-v" x="2" y="${y + 3}">${yen(max * g / 2)}</text>`; } months.forEach((m, i) => { const x = pad + i * step + step / 2; const ih = m.income / max * innerH, eh = m.expense / max * innerH; bars += `<rect class="bar-inc" x="${x - bw - gap / 2}" y="${H - 20 - ih}" width="${bw}" height="${ih}" rx="2"><title>${m.ym} 収入 ${yen(m.income)}</title></rect><rect class="bar-exp" x="${x + gap / 2}" y="${H - 20 - eh}" width="${bw}" height="${eh}" rx="2"><title>${m.ym} 支出 ${yen(m.expense)}</title></rect>`; axis += `<text class="trend-x" x="${x}" y="${H - 6}" text-anchor="middle">${m.ym.slice(5)}月</text>`; }); return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${grid}${bars}${axis}<g transform="translate(${pad},14)"><rect class="bar-inc" width="10" height="10" rx="2"/><text class="trend-x" x="16" y="9">収入</text><rect class="bar-exp" x="58" width="10" height="10" rx="2"/><text class="trend-x" x="74" y="9">支出</text></g></svg>`; }
   function drawDonut(entries, total, showPct) { if (!entries.length || !total) return { svg: `<svg viewBox="0 0 180 180" width="180" height="180"><circle cx="90" cy="90" r="60" fill="none" stroke="var(--line)" stroke-width="24"/></svg>`, legend: '' }; const r = 60, cx = 90, cy = 90, C = 2 * Math.PI * r; let off = 0, circles = '', labels = '', legend = ''; entries.forEach((e, i) => { const frac = e[1] / total, len = frac * C, col = PALETTE[i % PALETTE.length]; const p = Math.round(frac * 100); circles += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${col}" stroke-width="24" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 ${cx} ${cy})"><title>${esc(e[0])} ${yen(e[1])} (${p}%)</title></circle>`; if (showPct && p >= 8) { const mid = off + len / 2; const ang = (mid / C) * 2 * Math.PI - Math.PI / 2; const lx = cx + Math.cos(ang) * r, ly = cy + Math.sin(ang) * r; labels += `<text class="donut-pct" x="${lx}" y="${ly + 3}" text-anchor="middle">${p}%</text>`; } off += len; legend += `<div class="li"><span class="sw" style="background:${col}"></span><span class="nm">${esc(e[0])}</span><span class="vl">${yen(e[1])} ・ ${p}%</span></div>`; }); return { svg: `<svg viewBox="0 0 180 180" width="180" height="180">${circles}${labels}<text x="90" y="86" text-anchor="middle" fill="var(--muted)" font-size="11">合計</text><text x="90" y="104" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="700">${yen(total)}</text></svg>`, legend }; }
 
+  /* ============ 設定：固定費 ============ */
   const INTERVAL_LABEL = { 1: '毎月', 2: '隔月', 3: '3か月ごと', 6: '半年ごと', 12: '年1回' };
   const BIZ_LABEL = { none: 'そのまま', next: '翌営業日', prev: '前営業日' };
   function renderRecList() { const host = $('#recList'); if (!host) return; if (!state.recurring.length) { host.innerHTML = `<p class="muted">まだテンプレがありません。</p>`; return; } host.innerHTML = state.recurring.map(r => { const iv = r.intervalMonths || 1; const ivl = INTERVAL_LABEL[iv] || (iv + 'か月ごと'); const biz = (r.bizAdjust && r.bizAdjust !== 'none') ? '・土日祝→' + BIZ_LABEL[r.bizAdjust] : ''; return `<div class="rec-row"><div class="rn"><div class="acc-name">${esc(r.name)} ${r.active === false ? '<span class="tag">停止中</span>' : ''} ${iv > 1 ? '<span class="tag">' + ivl + '</span>' : ''} ${r.bizAdjust && r.bizAdjust !== 'none' ? '<span class="tag">' + BIZ_LABEL[r.bizAdjust] + '</span>' : ''}</div><div class="acc-sub">${r.builder === 'income' ? '定期収入' : '固定費'} ・ 毎月${r.dayOfMonth}日 ・ ${ivl}${iv > 1 && r.anchorYM ? '(基準' + r.anchorYM + ')' : ''}${biz} ・ ${r.params.catPath.replace(/^exp>|^inc>/, '').split('>').join(' › ')} ・ ${accName(r.params.accId)}${r.lastApplied ? ' ・ 最終 ' + r.lastApplied : ''}</div></div><div class="rec-amt">${yen(r.params.amount)}</div><div class="row" style="gap:6px"><button class="btn ghost sm" data-recedit="${r.id}">編集</button><button class="btn danger sm" data-recdel="${r.id}">削除</button></div></div>`; }).join(''); $$('[data-recedit]', host).forEach(b => b.addEventListener('click', () => openRecModal(b.dataset.recedit))); $$('[data-recdel]', host).forEach(b => b.addEventListener('click', () => { if (!confirm('テンプレを削除しますか？')) return; state.recurring = state.recurring.filter(r => r.id !== b.dataset.recdel); persist(); renderRecList(); updateGlobalNotice(); })); }
@@ -312,7 +322,7 @@
   function renderCatTree() { const kind = $('#catKind').value, root = state.categories[kind]; let html = ''; for (const top of Object.keys(root)) { html += `<div style="margin-bottom:6px"><b>${esc(top)}</b> `; const parts = []; for (const mid of Object.keys(root[top] || {})) { const leaves = root[top][mid] || []; parts.push(`<span class="tag">${esc(mid)}${leaves.length ? '：' + leaves.map(esc).join('・') : ''}</span>`); } html += parts.join(' ') + `</div>`; } $('#catTree').innerHTML = html || '<p class="muted">カテゴリなし</p>'; }
   function addCategory() { const kind = $('#catKind').value, top = $('#catTop').value.trim(), mid = $('#catMid').value.trim(), leaf = $('#catLeaf').value.trim(); if (!top) return toast('大カテゴリは必須です'); const root = state.categories[kind]; if (!root[top]) root[top] = {}; if (mid) { if (!root[top][mid]) root[top][mid] = []; if (leaf && !root[top][mid].includes(leaf)) root[top][mid].push(leaf); } persist(); renderCatTree(); refreshDatalists(); $('#catMid').value = ''; $('#catLeaf').value = ''; toast('カテゴリを追加しました ✓'); }
 
-  /* ---- 読み仮名の手動編集 ---- */
+  /* ---- 読み仮名 ---- */
   function renderReadings() {
     const host = $('#readingList'); if (!host) return; const entries = Object.entries(state.readings || {});
     host.innerHTML = entries.length ? entries.sort((a, b) => a[0].localeCompare(b[0], 'ja')).map(([k, v]) => `<div class="reading-row"><span class="rk">${esc(k)}</span><span class="ry">${esc(v)}</span><div class="row" style="gap:6px"><button class="btn ghost sm" data-rdedit="${esc(k)}">編集</button><button class="btn danger sm" data-rddel="${esc(k)}">削除</button></div></div>`).join('') : `<p class="muted">読み仮名の登録はありません。入力時に自動記録されるほか、ここで手動追加できます。</p>`;
@@ -321,12 +331,13 @@
   }
   function openReadingModal(key) {
     const editing = key != null && state.readings[key] != null; const k0 = editing ? key : ''; const v0 = editing ? state.readings[key] : '';
-    $('#modal').innerHTML = `<h3>${editing ? '読み仮名を編集' : '読み仮名を追加'}</h3><div class="field"><label>表示名（店名・品目など）</label><input id="rd_key" value="${esc(k0)}" placeholder="例: 紀伊國屋書店"></div><div class="field"><label>よみ（ひらがな）</label><input id="rd_yomi" value="${esc(v0)}" placeholder="例: きのくにやしょてん"></div><p class="hint">登録すると、その表示名を「よみ」でも検索できるようになります（店名・品目・カテゴリのサジェスト）。</p><div class="actions"><button class="btn ghost" id="rd_cancel">キャンセル</button><button class="btn" id="rd_ok">保存</button></div>`;
+    $('#modal').innerHTML = `<h3>${editing ? '読み仮名を編集' : '読み仮名を追加'}</h3><div class="field"><label>表示名（店名・品目など）</label><input id="rd_key" value="${esc(k0)}" placeholder="例: 紀伊國屋書店"></div><div class="field"><label>よみ（ひらがな）</label><input id="rd_yomi" value="${esc(v0)}" placeholder="例: きのくにやしょてん"></div><p class="hint">登録すると、その表示名を「よみ」でも検索できます。</p><div class="actions"><button class="btn ghost" id="rd_cancel">キャンセル</button><button class="btn" id="rd_ok">保存</button></div>`;
     $('#rd_cancel').addEventListener('click', closeModal);
     $('#rd_ok').addEventListener('click', () => { const k = $('#rd_key').value.trim(); const v = $('#rd_yomi').value.trim(); if (!k || !v) return toast('表示名とよみを入力してください'); if (editing && k !== key) delete state.readings[key]; state.readings[k] = v; persist(); closeModal(); renderReadings(); toast('保存しました ✓'); });
     showModal();
   }
 
+  /* ---- レシートテンプレート ---- */
   function renderTplBar() {
     const bar = $('#tplBar'); if (!bar) return;
     if (!state.templates.length) bar.innerHTML = `<span class="lbl">テンプレなし（設定で追加）</span> <button class="tpl-chip" id="tplSaveCur">＋現在の入力を保存</button>`;
@@ -335,19 +346,20 @@
     const sc = $('#tplSaveCur'); if (sc) sc.addEventListener('click', saveCurrentAsTemplate);
   }
   function loadTemplate(id) { const t = state.templates.find(x => x.id === id); if (!t) return; ui._store = t.store || ''; ui._branch = t.branch || ''; ui.exp.debits = (t.items && t.items.length) ? t.items.map(it => ({ path: it.catPath, amt: it.amount ? String(it.amount) : '', ratio: '' })) : [{ path: '', amt: '', ratio: '' }]; ui.exp.credits = [{ accId: t.creditAccId || '', amt: '' }]; ui.exp.detail = false; ui.exp.total = ''; renderEntry(); const first = $('#debitArea .d_amt'); if (first) first.focus(); toast(`テンプレ「${t.name}」を読み込みました。金額を入力してください`); }
-  function saveCurrentAsTemplate() { syncExpFromDOM(); const items = ui.exp.debits.filter(d => d.path).map(d => ({ catPath: d.path, amount: 0 })); if (!items.length) return toast('明細のカテゴリを1つ以上入れてください'); const name = prompt('テンプレ名を入力', ui._store || 'テンプレ'); if (!name) return; const creditAccId = (ui.exp.credits[0] && ui.exp.credits[0].accId) || (accountsBy(a => a.subtype === 'cash')[0] || {}).id || ''; state.templates.push({ id: 'tpl_' + Math.random().toString(36).slice(2, 8), name: name.trim(), store: ui._store || '', branch: ui._branch || '', creditAccId, items }); persist(); renderTplBar(); toast('テンプレを保存しました ✓'); }
-  function renderTplList() { const host = $('#tplList'); if (!host) return; host.innerHTML = state.templates.length ? state.templates.map(t => `<div class="rec-row"><div class="rn"><div class="acc-name">${esc(t.name)}</div><div class="acc-sub">${t.store ? esc(t.store) + (t.branch ? ' / ' + esc(t.branch) : '') + ' ・ ' : ''}${t.items.map(it => it.catPath.replace(/^exp>/, '').split('>').slice(-1)[0]).join('・')} ・ ${accName(t.creditAccId)}</div></div><div class="row" style="gap:6px"><button class="btn ghost sm" data-tpledit="${t.id}">編集</button><button class="btn danger sm" data-tpldel="${t.id}">削除</button></div></div>`).join('') : `<p class="muted">テンプレがありません。入力画面で組み立てて「現在を保存」も便利です。</p>`; $$('[data-tpledit]', host).forEach(b => b.addEventListener('click', () => openTplModal(b.dataset.tpledit))); $$('[data-tpldel]', host).forEach(b => b.addEventListener('click', () => { if (!confirm('テンプレを削除しますか？')) return; state.templates = state.templates.filter(t => t.id !== b.dataset.tpldel); persist(); renderTplList(); toast('削除しました'); })); }
+  function saveCurrentAsTemplate() { syncExpFromDOM(); const items = ui.exp.debits.filter(d => d.path).map(d => ({ catPath: d.path, amount: 0 })); if (!items.length) return toast('明細のカテゴリを1つ以上入れてください'); const name = prompt('テンプレ名を入力', ui._store || 'テンプレ'); if (!name) return; const creditAccId = (ui.exp.credits[0] && ui.exp.credits[0].accId) || (accountsBy(a => a.subtype === 'cash')[0] || {}).id || ''; state.templates.push({ id: 'tpl_' + Math.random().toString(36).slice(2, 8), name: name.trim(), store: ui._store || '', branch: ui._branch || '', creditAccId, padMode: 'calc', items }); persist(); renderTplBar(); toast('テンプレを保存しました ✓'); }
+  function renderTplList() { const host = $('#tplList'); if (!host) return; host.innerHTML = state.templates.length ? state.templates.map(t => `<div class="rec-row"><div class="rn"><div class="acc-name">${esc(t.name)} <span class="tag">${t.padMode === 'receipt' ? 'レシート' : '電卓'}</span></div><div class="acc-sub">${t.store ? esc(t.store) + (t.branch ? ' / ' + esc(t.branch) : '') + ' ・ ' : ''}${t.items.map(it => it.catPath.replace(/^exp>/, '').split('>').slice(-1)[0]).join('・')} ・ ${accName(t.creditAccId)}</div></div><div class="row" style="gap:6px"><button class="btn ghost sm" data-tpledit="${t.id}">編集</button><button class="btn danger sm" data-tpldel="${t.id}">削除</button></div></div>`).join('') : `<p class="muted">テンプレがありません。入力画面で組み立てて「現在を保存」も便利です。</p>`; $$('[data-tpledit]', host).forEach(b => b.addEventListener('click', () => openTplModal(b.dataset.tpledit))); $$('[data-tpldel]', host).forEach(b => b.addEventListener('click', () => { if (!confirm('テンプレを削除しますか？')) return; state.templates = state.templates.filter(t => t.id !== b.dataset.tpldel); persist(); renderTplList(); toast('削除しました'); })); }
   function openTplModal(id) {
-    const editing = id ? state.templates.find(t => t.id === id) : null; const t = editing || { id: 'tpl_' + Math.random().toString(36).slice(2, 8), name: '', store: '', branch: '', creditAccId: (accountsBy(a => a.subtype === 'cash')[0] || {}).id || '', items: [{ catPath: 'exp>食費>食材>主食', amount: 0 }] }; let items = t.items.map(it => ({ ...it }));
-    const draw = () => { $('#modal').innerHTML = `<h3>${editing ? 'テンプレを編集' : 'テンプレを追加'}</h3><div class="field"><label>テンプレ名</label><input id="tp_name" value="${esc(t.name)}" placeholder="例: いつものスーパー"></div><div class="row"><div class="field" style="flex:2"><label>店名(任意)</label><input id="tp_store" value="${esc(t.store)}"></div><div class="field"><label>支店(任意)</label><input id="tp_branch" value="${esc(t.branch)}"></div></div><div class="field"><label>支払手段</label><select id="tp_acc">${accountOptions(a => a.subtype !== 'voucher_goods', t.creditAccId)}</select></div><label>明細カテゴリ（金額は呼び出し後に入力）</label><div id="tp_items">${items.map((it, i) => `<div class="line-row" data-i="${i}"><div class="field cat"><select class="tp_cat catsel">${categoryOptions('expense', it.catPath)}</select></div><div><button class="btn ghost sm tp_del">✕</button></div></div>`).join('')}</div><button class="btn ghost sm" id="tp_add">＋明細を追加</button><div class="actions"><button class="btn ghost" id="tp_cancel">キャンセル</button><button class="btn" id="tp_save">保存</button></div>`;
+    const editing = id ? state.templates.find(t => t.id === id) : null; const t = editing || { id: 'tpl_' + Math.random().toString(36).slice(2, 8), name: '', store: '', branch: '', creditAccId: (accountsBy(a => a.subtype === 'cash')[0] || {}).id || '', padMode: 'calc', items: [{ catPath: 'exp>食費>食材>主食', amount: 0 }] }; let items = t.items.map(it => ({ ...it }));
+    const draw = () => { $('#modal').innerHTML = `<h3>${editing ? 'テンプレを編集' : 'テンプレを追加'}</h3><div class="field"><label>テンプレ名</label><input id="tp_name" value="${esc(t.name)}" placeholder="例: いつものスーパー"></div><div class="row"><div class="field" style="flex:2"><label>店名(任意)</label><input id="tp_store" value="${esc(t.store)}"></div><div class="field"><label>支店(任意)</label><input id="tp_branch" value="${esc(t.branch)}"></div></div><div class="row"><div class="field"><label>支払手段</label><select id="tp_acc">${accountOptions(a => a.subtype !== 'voucher_goods', t.creditAccId)}</select></div><div class="field"><label>入力方式</label><select id="tp_pad"><option value="calc" ${t.padMode !== 'receipt' ? 'selected' : ''}>電卓</option><option value="receipt" ${t.padMode === 'receipt' ? 'selected' : ''}>レシート</option></select></div></div><label>明細カテゴリ（金額は呼び出し後に入力）</label><div id="tp_items">${items.map((it, i) => `<div class="line-row" data-i="${i}"><div class="field cat"><select class="tp_cat catsel">${categoryOptions('expense', it.catPath)}</select></div><div><button class="btn ghost sm tp_del">✕</button></div></div>`).join('')}</div><button class="btn ghost sm" id="tp_add">＋明細を追加</button><div class="actions"><button class="btn ghost" id="tp_cancel">キャンセル</button><button class="btn" id="tp_save">保存</button></div>`;
       $$('#tp_items .line-row').forEach(row => { const i = +row.dataset.i; row.querySelector('.tp_cat').addEventListener('change', e => items[i].catPath = e.target.value); row.querySelector('.tp_del').addEventListener('click', () => { syncTp(); items.splice(i, 1); if (!items.length) items.push({ catPath: 'exp>食費>食材>主食', amount: 0 }); draw(); }); });
       $('#tp_add').addEventListener('click', () => { syncTp(); items.push({ catPath: 'exp>食費>食材>主食', amount: 0 }); draw(); }); $('#tp_cancel').addEventListener('click', closeModal); decorateInputs($('#modal'));
-      $('#tp_save').addEventListener('click', () => { syncTp(); const name = $('#tp_name').value.trim(); if (!name) return toast('テンプレ名を入れてください'); t.name = name; t.store = $('#tp_store').value; t.branch = $('#tp_branch').value; t.creditAccId = $('#tp_acc').value; t.items = items.map(it => ({ catPath: it.catPath, amount: 0 })); if (!editing) state.templates.push(t); persist(); closeModal(); renderTplList(); renderTplBar(); toast('保存しました ✓'); });
+      $('#tp_save').addEventListener('click', () => { syncTp(); const name = $('#tp_name').value.trim(); if (!name) return toast('テンプレ名を入れてください'); t.name = name; t.store = $('#tp_store').value; t.branch = $('#tp_branch').value; t.creditAccId = $('#tp_acc').value; t.padMode = $('#tp_pad').value; t.items = items.map(it => ({ catPath: it.catPath, amount: 0 })); if (!editing) state.templates.push(t); persist(); closeModal(); renderTplList(); renderTplBar(); toast('保存しました ✓'); });
       function syncTp() { $$('#tp_items .line-row').forEach(row => { const i = +row.dataset.i; items[i].catPath = row.querySelector('.tp_cat').value; }); }
     };
     draw(); showModal();
   }
 
+  /* ---- データ入出力 ---- */
   function download(name, text, type) { const blob = new Blob([text], { type }); const a = el('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
   function exportJSON() { download(`kakeibo_${M.todayStr()}.json`, JSON.stringify(state, null, 2), 'application/json'); toast('書き出しました'); }
   function exportCSV() { download(`kakeibo_${M.todayStr()}.csv`, '\ufeff' + M.serializeCSV(state), 'text/csv;charset=utf-8'); toast('CSVを書き出しました'); }
@@ -358,11 +370,12 @@
   function showModal() { $('#modalBg').classList.add('show'); decorateInputs($('#modal')); }
   function closeModal() { $('#modalBg').classList.remove('show'); }
 
+  /* ============ 予算・積立 ============ */
   function renderBudget() {
     if ($('#tab-budget').hidden) return; const ym = currentYM(); const rep = M.budgetReport(state, ym); const overRatio = rep.totalBudget > 0 ? rep.totalSpent / rep.totalBudget : 0;
     if ($('#budRollover')) $('#budRollover').checked = !!state.budgetRollover;
     $('#budgetCards').innerHTML = [['予算合計', yen(rep.totalBudget), ''], ['支出合計', yen(rep.totalSpent), rep.totalSpent > rep.totalBudget ? 'neg' : ''], ['残り', yen(rep.totalRemain), rep.totalRemain < 0 ? 'neg' : 'pos']].map(([k, v, c]) => `<div class="stat"><div class="k">${k}（${ym}）</div><div class="v ${c}">${v}</div><div class="sub">${k === '支出合計' ? Math.round(overRatio * 100) + '% 消化' : (k === '予算合計' && rep.rollover ? '繰越込み' : '')}</div></div>`).join('');
-    $('#budgetList').innerHTML = rep.entries.length ? rep.entries.map(e => { const p = Math.round(e.ratio * 100); const cls = e.ratio >= 1 ? 'over' : (e.ratio >= 0.8 ? 'warn' : ''); const carryHtml = (rep.rollover && Math.abs(e.carry) > 0.5) ? ` <span class="acc-sub">(基準 ${yen(e.budget)} ${e.carry >= 0 ? '＋繰越 ' : '−超過 '}${yen(Math.abs(e.carry))})</span>` : ''; return `<div class="bud-row"><div class="bud-head"><div><span class="bud-name">${esc(e.label)}</span> <span class="acc-sub">${p}% 消化</span>${carryHtml}</div><div class="bud-fig">${yen(e.spent)} / ${yen(e.effective)} ・ 残 <b class="${e.remain < 0 ? 'neg' : 'pos'}">${yen(e.remain)}</b> <button class="btn ghost sm" data-budedit="${esc(e.catPath)}">編集</button> <button class="btn danger sm" data-buddel="${esc(e.catPath)}">削除</button></div></div><div class="bar ${cls}"><span style="width:${Math.min(100, p)}%"></span></div></div>`; }).join('') : `<p class="muted">予算が未設定です。「＋予算を設定」から追加してください。</p>`;
+    $('#budgetList').innerHTML = rep.entries.length ? rep.entries.map(e => { const p = Math.round(e.ratio * 100); const cls = e.ratio >= 1 ? 'over' : (e.ratio >= 0.8 ? 'warn' : ''); const carryHtml = (rep.rollover && Math.abs(e.carry) > 0.5) ? ` <span class="acc-sub">(基準 ${yen(e.budget)} ${e.carry >= 0 ? '＋繰越 ' : '−超過 '}${yen(Math.abs(e.carry))})</span>` : ''; return `<div class="bud-row"><div class="bud-head"><div><span class="bud-name">${esc(e.label)}</span> <span class="acc-sub">${p}% 消化</span>${carryHtml}</div><div class="bud-fig">${yen(e.spent)} / ${yen(e.effective)} ・ 残 <b class="${e.remain < 0 ? 'neg' : 'pos'}">${yen(e.remain)}</b> <button class="btn ghost sm" data-budedit="${esc(e.catPath)}">編集</button> <button class="btn danger sm" data-buddel="${esc(e.catPath)}">削除</button></div></div><div class="bar ${cls}"><span style="width:${Math.min(100, p)}%"></span></div></div>`; }).join('') : `<p class="muted">予算が未設定です。「＋予算」から追加してください。</p>`;
     $$('[data-budedit]', $('#budgetList')).forEach(b => b.addEventListener('click', () => openBudgetModal(b.dataset.budedit)));
     $$('[data-buddel]', $('#budgetList')).forEach(b => b.addEventListener('click', () => { delete state.budgets[b.dataset.buddel]; persist(); renderBudget(); renderDrill(); toast('予算を削除しました'); }));
     renderGoals();
@@ -377,7 +390,7 @@
     renderGoalTimeline(surplus);
     const sim = M.simulateGoals(state, ym, surplus); const simById = {}; sim.forEach(g => simById[g.id] = g);
     const goals = state.goals.slice().sort((a, b) => (a.priority - b.priority) || String(a.targetYM || '9999').localeCompare(String(b.targetYM || '9999')));
-    $('#goalList').innerHTML = goals.length ? goals.map(g => { const remain = Math.max(0, (g.target || 0) - (g.saved || 0)); const p = M.pct(g.saved || 0, g.target || 1); const req = M.goalRequiredMonthly(g, ym); const s = simById[g.id]; const proj = s ? s.doneYM : null; let status = 'none', statusText = '期限なし'; if (g.targetYM) { if (remain <= 0) { status = 'ok'; statusText = '達成済み'; } else if (proj && proj <= g.targetYM) { status = 'ok'; statusText = '間に合う見込み'; } else { status = 'behind'; statusText = '遅れる見込み'; } } else if (remain <= 0) { status = 'ok'; statusText = '達成済み'; } const cls = p >= 100 ? '' : (p >= 80 ? 'warn' : ''); return `<div class="goal-card"><div class="goal-top"><div><div class="goal-name">${esc(g.name)}</div><div class="goal-meta">優先度 ${g.priority || 3}${g.targetYM ? ' ・ 目標 ' + g.targetYM : ' ・ 期限なし'}${g.linkedAccId ? ' ・ 紐付 ' + accName(g.linkedAccId) : ''}${g.note ? ' ・ ' + esc(g.note) : ''}</div></div><span class="goal-status ${status}">${statusText}</span></div><div class="bar ${cls}" style="margin:10px 0"><span style="width:${Math.min(100, p)}%"></span></div><div class="goal-figs"><div><div class="fk">積立済 / 目標</div><div class="fv">${yen(g.saved || 0)} / ${yen(g.target || 0)}（${p}%）</div></div><div><div class="fk">残り</div><div class="fv">${yen(remain)}</div></div>${g.targetYM ? `<div><div class="fk">必要月額</div><div class="fv">${req == null ? '—' : yen(req)}</div></div>` : ''}<div><div class="fk">この配分での達成</div><div class="fv">${remain <= 0 ? '完了' : (proj || '20年以上')}</div></div></div><div class="row" style="gap:6px"><button class="btn ghost sm" data-goalsave="${g.id}">積立を記録</button><button class="btn ghost sm" data-goaledit="${g.id}">編集</button><button class="btn danger sm" data-goaldel="${g.id}">削除</button></div></div>`; }).join('') : `<p class="muted">目標がありません。「＋目標を追加」から作成してください。</p>`;
+    $('#goalList').innerHTML = goals.length ? goals.map(g => { const remain = Math.max(0, (g.target || 0) - (g.saved || 0)); const p = M.pct(g.saved || 0, g.target || 1); const req = M.goalRequiredMonthly(g, ym); const s = simById[g.id]; const proj = s ? s.doneYM : null; let status = 'none', statusText = '期限なし'; if (g.targetYM) { if (remain <= 0) { status = 'ok'; statusText = '達成済み'; } else if (proj && proj <= g.targetYM) { status = 'ok'; statusText = '間に合う見込み'; } else { status = 'behind'; statusText = '遅れる見込み'; } } else if (remain <= 0) { status = 'ok'; statusText = '達成済み'; } const cls = p >= 100 ? '' : (p >= 80 ? 'warn' : ''); return `<div class="goal-card"><div class="goal-top"><div><div class="goal-name">${esc(g.name)}</div><div class="goal-meta">優先度 ${g.priority || 3}${g.targetYM ? ' ・ 目標 ' + g.targetYM : ' ・ 期限なし'}${g.linkedAccId ? ' ・ 紐付 ' + accName(g.linkedAccId) : ''}${g.note ? ' ・ ' + esc(g.note) : ''}</div></div><span class="goal-status ${status}">${statusText}</span></div><div class="bar ${cls}" style="margin:10px 0"><span style="width:${Math.min(100, p)}%"></span></div><div class="goal-figs"><div><div class="fk">積立済 / 目標</div><div class="fv">${yen(g.saved || 0)} / ${yen(g.target || 0)}（${p}%）</div></div><div><div class="fk">残り</div><div class="fv">${yen(remain)}</div></div>${g.targetYM ? `<div><div class="fk">必要月額</div><div class="fv">${req == null ? '—' : yen(req)}</div></div>` : ''}<div><div class="fk">この配分での達成</div><div class="fv">${remain <= 0 ? '完了' : (proj || '20年以上')}</div></div></div><div class="row" style="gap:6px"><button class="btn ghost sm" data-goalsave="${g.id}">積立を記録</button><button class="btn ghost sm" data-goaledit="${g.id}">編集</button><button class="btn danger sm" data-goaldel="${g.id}">削除</button></div></div>`; }).join('') : `<p class="muted">目標がありません。「＋目標」から作成してください。</p>`;
     $$('[data-goaledit]', $('#goalList')).forEach(b => b.addEventListener('click', () => openGoalModal(b.dataset.goaledit)));
     $$('[data-goaldel]', $('#goalList')).forEach(b => b.addEventListener('click', () => { if (!confirm('目標を削除しますか？')) return; state.goals = state.goals.filter(g => g.id !== b.dataset.goaldel); state.wishlist.forEach(w => { if (w.goalId === b.dataset.goaldel) w.goalId = null; }); persist(); renderGoals(); renderWishlist(); toast('削除しました'); }));
     $$('[data-goalsave]', $('#goalList')).forEach(b => b.addEventListener('click', () => openGoalSaveModal(b.dataset.goalsave)));
@@ -391,9 +404,10 @@
   function openGoalSaveModal(id) { const g = state.goals.find(x => x.id === id); if (!g) return; const remain = Math.max(0, (g.target || 0) - (g.saved || 0)); $('#modal').innerHTML = `<h3>積立を記録：${esc(g.name)}</h3><p class="hint">仮想封筒への取り分けを記録します（帳簿の仕訳は作りません）。</p><div class="field"><label>今回積み立てる額（残り ${yen(remain)}）</label><input type="number" id="gs_amt" placeholder="例: 20000"></div><div class="field"><label><input type="checkbox" id="gs_xfer" style="width:auto" ${g.linkedAccId ? '' : 'disabled'}> 同時に振替も記帳する${g.linkedAccId ? '（→ ' + accName(g.linkedAccId) + '）' : '（紐付口座なし）'}</label></div><div id="gs_xferFields" style="display:none"><div class="field"><label>振替元口座</label><select id="gs_from">${accountOptions(a => ['bank', 'cash'].includes(a.subtype))}</select></div></div><div class="actions"><button class="btn ghost" id="gs_cancel">キャンセル</button><button class="btn" id="gs_ok">記録</button></div>`; $('#gs_xfer').addEventListener('change', e => $('#gs_xferFields').style.display = e.target.checked ? '' : 'none'); $('#gs_cancel').addEventListener('click', closeModal); $('#gs_ok').addEventListener('click', () => { const amt = +$('#gs_amt').value; if (!amt) return toast('金額を入れてください'); g.saved = (g.saved || 0) + amt; if ($('#gs_xfer').checked && g.linkedAccId) { const from = $('#gs_from').value; if (from && from !== g.linkedAccId) state.transactions.push(M.buildTransfer({ date: M.todayStr(), fromAccId: from, toAccId: g.linkedAccId, amount: amt, store: '積立', memo: '積立: ' + g.name })); } persist(); closeModal(); renderGoals(); renderAccounts(); renderList(); toast('積立を記録しました ✓'); }); showModal(); }
   function openGoalModal(id) { const editing = id ? state.goals.find(g => g.id === id) : null; const g = editing || { id: 'g_' + Math.random().toString(36).slice(2, 8), name: '', target: 0, targetYM: '', saved: 0, priority: 3, note: '', linkedAccId: null }; $('#modal').innerHTML = `<h3>${editing ? '目標を編集' : '目標を追加'}</h3><div class="field"><label>目標名</label><input id="go_name" value="${esc(g.name)}" placeholder="例: Mac買い替え / 旅行 / 予備資金"></div><div class="row"><div class="field"><label>目標額</label><input type="number" id="go_target" value="${g.target || ''}"></div><div class="field"><label>現在の積立済</label><input type="number" id="go_saved" value="${g.saved || 0}"></div></div><div class="row"><div class="field"><label>目標月（任意）</label><input type="month" id="go_ym" value="${g.targetYM || ''}"></div><div class="field"><label>優先度(1=最優先)</label><input type="number" id="go_pri" min="1" max="9" value="${g.priority || 3}"></div></div><div class="field"><label>紐付ける積立口座（任意）</label><select id="go_acc"><option value="">なし（仮想のみ）</option>${accountOptions(a => M.ACCOUNT_SUBTYPES[a.subtype].kind === 'asset', g.linkedAccId)}</select></div><div class="field"><label>メモ</label><input id="go_note" value="${esc(g.note || '')}"></div><div class="actions"><button class="btn ghost" id="go_cancel">キャンセル</button><button class="btn" id="go_ok">保存</button></div>`; $('#go_cancel').addEventListener('click', closeModal); $('#go_ok').addEventListener('click', () => { const name = $('#go_name').value.trim(); if (!name) return toast('目標名を入れてください'); const target = +$('#go_target').value; if (!target) return toast('目標額を入れてください'); const obj = editing || g; obj.name = name; obj.target = target; obj.saved = +$('#go_saved').value || 0; obj.targetYM = $('#go_ym').value || null; obj.priority = +$('#go_pri').value || 3; obj.linkedAccId = $('#go_acc').value || null; obj.note = $('#go_note').value; if (!editing) state.goals.push(obj); persist(); closeModal(); renderGoals(); toast('保存しました ✓'); }); showModal(); }
 
+  /* ============ ほしいもの ============ */
   function allWishTags() { const s = new Set(); state.wishlist.forEach(w => (w.tags || []).forEach(t => s.add(t))); return [...s].sort((a, b) => a.localeCompare(b, 'ja')); }
   function renderWishlist() {
-    if ($('#tab-wish').hidden) return; const tags = allWishTags();
+    if ($('#tab-wishlist').hidden) return; const tags = allWishTags();
     $('#wishTags').innerHTML = `<span class="muted" style="font-size:12px">表示:</span>` + `<button class="chip-btn ${wishFilter.status === 'active' ? 'active' : ''}" data-st="active">未購入</button>` + `<button class="chip-btn ${wishFilter.status === 'done' ? 'active' : ''}" data-st="done">購入済</button>` + `<button class="chip-btn ${wishFilter.status === 'all' ? 'active' : ''}" data-st="all">すべて</button>` + `<span style="width:8px"></span><span class="muted" style="font-size:12px">タグ:</span>` + `<button class="chip-btn ${wishFilter.tag == null ? 'active' : ''}" data-tag="">全部</button>` + tags.map(t => `<button class="chip-btn ${wishFilter.tag === t ? 'active' : ''}" data-tag="${esc(t)}">${esc(t)}</button>`).join('');
     $$('#wishTags [data-st]').forEach(b => b.addEventListener('click', () => { wishFilter.status = b.dataset.st; renderWishlist(); }));
     $$('#wishTags [data-tag]').forEach(b => b.addEventListener('click', () => { wishFilter.tag = b.dataset.tag || null; renderWishlist(); }));
@@ -409,10 +423,11 @@
   }
   function openWishModal(id) { const editing = id ? state.wishlist.find(w => w.id === id) : null; const w = editing || { id: 'w_' + Math.random().toString(36).slice(2, 8), name: '', price: 0, desiredYM: '', priority: 3, note: '', goalId: null, tags: [], status: 'active', store: '', url: '' }; const tagSug = allWishTags(); $('#modal').innerHTML = `<h3>${editing ? 'ほしいものを編集' : 'ほしいものを追加'}</h3><div class="field"><label>名称</label><input id="wi_name" value="${esc(w.name)}" placeholder="例: ヘッドホン / 包丁 / クミンパウダー"></div><div class="row"><div class="field"><label>価格(目安)</label><input type="number" id="wi_price" value="${w.price || ''}"></div><div class="field"><label>ほしい時期(任意)</label><input type="month" id="wi_ym" value="${w.desiredYM || ''}"></div><div class="field"><label>優先度(1=高)</label><input type="number" id="wi_pri" min="1" max="9" value="${w.priority || 3}"></div></div><div class="row"><div class="field"><label>買う店(任意)</label><input id="wi_store" list="dl-store" value="${esc(w.store || '')}" placeholder="例: ニトリ / Amazon"></div><div class="field"><label>URL(任意)</label><input id="wi_url" value="${esc(w.url || '')}" placeholder="https://"></div></div><div class="field"><label>タグ（カンマ区切り）</label><input id="wi_tags" value="${esc((w.tags || []).join(', '))}" placeholder="例: ネットで買う, キッチン"></div>${tagSug.length ? `<div class="chips" id="wi_tagsug">${tagSug.map(t => `<button type="button" class="chip-btn" data-t="${esc(t)}">+ ${esc(t)}</button>`).join('')}</div>` : ''}<div class="field"><label>メモ</label><input id="wi_note" value="${esc(w.note || '')}"></div><div class="actions"><button class="btn ghost" id="wi_cancel">キャンセル</button><button class="btn" id="wi_ok">保存</button></div>`; $$('#wi_tagsug .chip-btn').forEach(b => b.addEventListener('click', () => { const cur = $('#wi_tags').value.split(',').map(s => s.trim()).filter(Boolean); if (!cur.includes(b.dataset.t)) cur.push(b.dataset.t); $('#wi_tags').value = cur.join(', '); })); $('#wi_cancel').addEventListener('click', closeModal); $('#wi_ok').addEventListener('click', () => { const name = $('#wi_name').value.trim(); if (!name) return toast('名称を入れてください'); const obj = editing || w; obj.name = name; obj.price = +$('#wi_price').value || 0; obj.desiredYM = $('#wi_ym').value || null; obj.priority = +$('#wi_pri').value || 3; obj.store = $('#wi_store').value; obj.url = $('#wi_url').value; obj.tags = $('#wi_tags').value.split(',').map(s => s.trim()).filter(Boolean); obj.note = $('#wi_note').value; if (!editing) { obj.status = 'active'; state.wishlist.push(obj); } persist(); closeModal(); renderWishlist(); toast('保存しました ✓'); }); showModal(); }
 
+  /* ============ 価格比較 ============ */
   const PRICE_UNITS = ['総額', 'g', 'kg', 'ml', 'L', '個', '本', '枚', '杯'];
   const PRICE_PREVIEW = 3;
   function renderPrice() {
-    if ($('#tab-wish').hidden) return; const items = M.priceItems(state);
+    if ($('#tab-price').hidden) return; const items = M.priceItems(state);
     $('#priceList').innerHTML = items.length ? items.map(it => {
       const open = priceOpen.has(it.item); const showAll = priceShowAll.has(it.item);
       const best = it.entries.find(e => e.id === it.bestId);
@@ -443,12 +458,56 @@
   function fmtNorm(n) { return (Math.round(n.value * 100) / 100).toLocaleString('ja-JP') + ' ' + n.label; }
   function openPriceModal(id) { const editing = id ? state.priceLogs.find(p => p.id === id) : null; const e = editing || { id: 'pl_' + Math.random().toString(36).slice(2, 8), item: '', date: M.todayStr(), store: '', branch: '', price: 0, qty: 0, unit: '総額', note: '' }; $('#modal').innerHTML = `<h3>${editing ? '価格を編集' : '価格を記録'}</h3><div class="field"><label>品目</label><input id="pl_item" list="dl-item" value="${esc(e.item)}" placeholder="例: 卵(10個) / 牛乳 / 鶏むね肉"></div><div class="row"><div class="field"><label>日付</label><input type="date" id="pl_date" value="${e.date}"></div><div class="field" style="flex:2"><label>店名</label><input id="pl_store" list="dl-store" value="${esc(e.store)}"></div><div class="field"><label>支店</label><input id="pl_branch" list="dl-branch" value="${esc(e.branch)}"></div></div><div class="row"><div class="field"><label>価格</label><input type="number" id="pl_price" value="${e.price || ''}"></div><div class="field"><label>数量</label><input type="number" id="pl_qty" value="${e.qty || ''}"></div><div class="field"><label>単位</label><select id="pl_unit">${PRICE_UNITS.map(u => `<option ${u === e.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div><div class="acc-sub" id="pl_preview" style="margin-bottom:8px"></div><div class="field"><label>メモ</label><input id="pl_note" value="${esc(e.note || '')}"></div><div class="actions"><button class="btn ghost" id="pl_cancel">キャンセル</button><button class="btn" id="pl_ok">保存</button></div>`; const upd = () => { const n = M.normalizedUnitPrice({ price: +$('#pl_price').value, qty: +$('#pl_qty').value, unit: $('#pl_unit').value }); $('#pl_preview').textContent = n ? '実質単価 ≈ ' + fmtNorm(n) : '数量を入れると実質単価を計算します'; }; ['#pl_price', '#pl_qty', '#pl_unit'].forEach(s => $(s).addEventListener('input', upd)); upd(); $('#pl_cancel').addEventListener('click', closeModal); $('#pl_ok').addEventListener('click', () => { const item = $('#pl_item').value.trim(); if (!item) return toast('品目を入れてください'); const price = +$('#pl_price').value; if (!price) return toast('価格を入れてください'); const data = { item, date: $('#pl_date').value, store: $('#pl_store').value, branch: $('#pl_branch').value, price, qty: +$('#pl_qty').value || 0, unit: $('#pl_unit').value, note: $('#pl_note').value }; if (editing) Object.assign(editing, data); else { M.addPriceLog(state, data); priceOpen.add(item); } persist(); refreshDatalists(); closeModal(); renderPrice(); toast('保存しました ✓'); }); showModal(); }
 
-  const TABS = ['entry', 'list', 'drill', 'budget', 'wish', 'accounts', 'cards', 'report', 'settings'];
-  function switchTab(name) { $$('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name)); TABS.forEach(t => $('#tab-' + t).hidden = (t !== name)); if (name === 'list') { if (!$('#fltYm').dataset.init) { $('#fltYm').value = currentYM(); $('#fltYm').dataset.init = '1'; } renderList(); } else if (name === 'drill') renderDrill(); else if (name === 'budget') renderBudget(); else if (name === 'wish') { renderWishlist(); renderPrice(); } else if (name === 'accounts') renderAccounts(); else if (name === 'cards') renderCards(); else if (name === 'report') renderReport(); else if (name === 'settings') renderSettings(); else renderEntry(); }
+  /* ============ ナビ（下タブ＋ドロワー＋タブ） ============ */
+  const TABS = ['entry', 'list', 'drill', 'budget', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
+  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: 'カテゴリ分析', budget: '予算・積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
+  const BOTTOM_TABS = ['entry', 'list', 'drill', 'budget'];
+  function renderDrawer() {
+    const groups = [
+      ['記録', [['entry', '✎'], ['list', '☰']]],
+      ['分析', [['drill', '◔'], ['report', '▤'], ['budget', '◈']]],
+      ['リスト', [['wishlist', '♡'], ['price', '⇅']]],
+      ['口座', [['accounts', '▦'], ['cards', '▣']]],
+      ['その他', [['settings', '⚙']]],
+    ];
+    $('#drawerBody').innerHTML = groups.map(([sec, items]) => `<div class="drawer-sec">${sec}</div>` + items.map(([t, ic]) => `<button class="drawer-item" data-tab="${t}"><span class="drawer-ic">${ic}</span>${TAB_LABEL[t]}</button>`).join('')).join('');
+    $$('#drawerBody [data-tab]').forEach(b => b.addEventListener('click', () => { switchTab(b.dataset.tab); closeDrawer(); }));
+  }
+  function openDrawer() { renderDrawerActive(); $('#drawer').classList.add('show'); $('#drawerBg').classList.add('show'); }
+  function closeDrawer() { $('#drawer').classList.remove('show'); $('#drawerBg').classList.remove('show'); }
+  function renderDrawerActive() { const name = curTab; $$('#drawerBody [data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === name)); }
+  let curTab = 'entry';
+  function renderNav(name) {
+    curTab = name;
+    $$('#tabs button').forEach(b => b.classList.toggle('active', b.dataset.tab === name));
+    $$('#bottomNav button').forEach(b => { if (b.dataset.tab) b.classList.toggle('active', b.dataset.tab === name); else if (b.dataset.menu) b.classList.toggle('active', !BOTTOM_TABS.includes(name)); });
+    renderDrawerActive();
+    const ct = $('#curTabName'); if (ct) ct.textContent = TAB_LABEL[name] || '';
+  }
+
+  function switchTab(name) {
+    TABS.forEach(t => { const el = $('#tab-' + t); if (el) el.hidden = (t !== name); });
+    renderNav(name);
+    if (name === 'list') { if (!$('#fltYm').dataset.init) { $('#fltYm').value = currentYM(); $('#fltYm').dataset.init = '1'; } renderList(); }
+    else if (name === 'drill') renderDrill();
+    else if (name === 'budget') renderBudget();
+    else if (name === 'wishlist') renderWishlist();
+    else if (name === 'price') renderPrice();
+    else if (name === 'accounts') renderAccounts();
+    else if (name === 'cards') renderCards();
+    else if (name === 'report') renderReport();
+    else if (name === 'settings') renderSettings();
+    else renderEntry();
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
   function renderAll() { renderEntry(); renderList(); renderDrill(); renderBudget(); renderWishlist(); renderPrice(); renderAccounts(); renderCards(); renderReport(); renderSettings(); }
 
   function bind() {
     $('#tabs').addEventListener('click', e => { if (e.target.dataset.tab) switchTab(e.target.dataset.tab); });
+    $('#bottomNav').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.tab) switchTab(b.dataset.tab); else if (b.dataset.menu) openDrawer(); });
+    $('#hamburger').addEventListener('click', openDrawer);
+    $('#drawerClose').addEventListener('click', closeDrawer);
+    $('#drawerBg').addEventListener('click', closeDrawer);
     $('#typebar').addEventListener('click', e => { if (e.target.dataset.type) { ui.type = e.target.dataset.type; renderEntry(); } });
     $('#ym').addEventListener('change', onMonthChange); $('#ymPrev').addEventListener('click', () => shiftMonth(-1)); $('#ymNext').addEventListener('click', () => shiftMonth(1)); $('#ymToday').addEventListener('click', () => { $('#ym').value = M.curYM(); onMonthChange(); });
     ['#fltYm', '#fltCat', '#fltKind', '#fltText'].forEach(s => $(s).addEventListener('input', renderList));
@@ -470,9 +529,6 @@
     $('#resetBtn').addEventListener('click', () => { if (confirm('全データを初期化します。よろしいですか？')) { state = M.initialState(); selected.clear(); persist(); refreshDatalists(); renderAll(); switchTab('entry'); updateGlobalNotice(); toast('初期化しました'); } });
     $('#modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg') closeModal(); });
   }
-  function boot() { $('#ym').value = M.curYM(); bind(); refreshDatalists(); switchTab('entry'); updateGlobalNotice(); persist(); }
-
-  // cloud.js から注入されるため DOM は既に構築済み。readyState を見て起動。
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
-  else boot();
+  function boot() { $('#ym').value = M.curYM(); bind(); renderDrawer(); refreshDatalists(); switchTab('entry'); updateGlobalNotice(); persist(); }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();
 })();

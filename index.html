@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<title>家計簿 v1 ― 複式簿記ハイブリッド</title>
+<title>家計簿 v1.1 ― 複式簿記ハイブリッド</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -28,9 +28,18 @@
   </div>
 </div>
 
+<!-- ドロワー（≡メニュー） -->
+<div class="drawer-bg" id="drawerBg"></div>
+<nav class="drawer" id="drawer">
+  <div class="drawer-head"><span>メニュー</span><button class="btn ghost sm" id="drawerClose">✕</button></div>
+  <div class="drawer-body" id="drawerBody"></div>
+</nav>
+
 <div class="app">
   <header class="top">
-    <div class="brand">家計簿 <small>v1 · 複式簿記ハイブリッド</small></div>
+    <button class="hamburger" id="hamburger" title="メニュー">≡</button>
+    <div class="brand">家計簿 <small>v1.1</small></div>
+    <div class="cur-tab" id="curTabName"></div>
     <div class="spacer"></div>
     <div class="account-bar" id="accountBar"></div>
     <div class="monthnav">
@@ -41,12 +50,14 @@
     </div>
   </header>
 
+  <!-- PC用タブ（1段・スマホでは非表示） -->
   <nav class="tabs" id="tabs">
     <button data-tab="entry" class="active">入力</button>
     <button data-tab="list">取引一覧</button>
     <button data-tab="drill">カテゴリ分析</button>
     <button data-tab="budget">予算・積立</button>
-    <button data-tab="wish">ほしいもの・比較</button>
+    <button data-tab="wishlist">ほしいもの</button>
+    <button data-tab="price">価格比較</button>
     <button data-tab="accounts">残高・口座</button>
     <button data-tab="cards">カード請求</button>
     <button data-tab="report">レポート</button>
@@ -55,8 +66,8 @@
 
   <div id="globalNotice"></div>
 
+  <!-- 入力（フォームを最優先・サマリは下に折りたたみ） -->
   <section id="tab-entry">
-    <div class="grid cols-4" id="summaryCards"></div>
     <div class="panel">
       <div id="editBanner"></div>
       <div class="typebar" id="typebar">
@@ -68,6 +79,10 @@
       </div>
       <div id="entryForm"></div>
     </div>
+    <details class="summary-fold" id="summaryFold">
+      <summary>今月のサマリを表示</summary>
+      <div class="grid cols-4" id="summaryCards" style="margin-top:12px"></div>
+    </details>
   </section>
 
   <section id="tab-list" hidden>
@@ -80,12 +95,10 @@
         <button class="btn ghost sm" id="fltClear">クリア</button>
       </div>
       <div id="bulkBar"></div>
-      <div style="overflow:auto; max-height:60vh">
-        <table id="txTable"><thead><tr>
-          <th class="chk"><input type="checkbox" id="chkAll" title="全選択"></th>
-          <th>日付</th><th>種別</th><th>借方(何に)</th><th>貸方(どこから)</th><th>店名</th><th class="num">金額</th><th></th>
-        </tr></thead><tbody></tbody></table>
-      </div>
+      <div id="txListWrap"><table id="txTable"><thead><tr>
+        <th class="chk"><input type="checkbox" id="chkAll" title="全選択"></th>
+        <th>日付</th><th>種別</th><th>借方(何に)</th><th>貸方(どこから)</th><th>店名</th><th class="num">金額</th><th></th>
+      </tr></thead><tbody></tbody></table></div>
     </div>
   </section>
 
@@ -96,7 +109,7 @@
       <div class="crumb" id="drillCrumb"></div>
       <div class="chart-wrap" style="margin-bottom:16px">
         <div id="drillDonut"></div>
-        <div class="donut-legend" id="drillList" style="min-width:360px"></div>
+        <div class="donut-legend" id="drillList" style="min-width:280px"></div>
       </div>
       <div id="drillDetail"></div>
     </div>
@@ -106,14 +119,14 @@
     <div class="panel">
       <div class="section-title"><h3>カテゴリ予算（対象月）</h3>
         <div style="display:flex; gap:10px; align-items:center">
-          <label style="margin:0; display:flex; gap:6px; align-items:center; font-size:12px"><input type="checkbox" id="budRollover" style="width:auto"> 繰越（前月の余り/超過を反映）</label>
-          <button class="btn sm" id="addBudget">＋予算を設定</button>
+          <label style="margin:0; display:flex; gap:6px; align-items:center; font-size:12px"><input type="checkbox" id="budRollover" style="width:auto"> 繰越</label>
+          <button class="btn sm" id="addBudget">＋予算</button>
         </div></div>
       <div class="grid cols-3" id="budgetCards"></div>
       <div id="budgetList"></div>
     </div>
     <div class="panel">
-      <div class="section-title"><h3>積立目標（シミュレーター）</h3><button class="btn sm" id="addGoal">＋目標を追加</button></div>
+      <div class="section-title"><h3>積立目標（シミュレーター）</h3><button class="btn sm" id="addGoal">＋目標</button></div>
       <div class="sim-box">
         <div class="field"><label>毎月の積立に回せる額</label><input type="number" id="simSurplus" style="width:140px"></div>
         <div class="acc-sub" id="simHint"></div>
@@ -124,14 +137,19 @@
     </div>
   </section>
 
-  <section id="tab-wish" hidden>
+  <!-- ほしいもの（分離） -->
+  <section id="tab-wishlist" hidden>
     <div class="panel">
-      <div class="section-title"><h3>ほしいものリスト</h3><button class="btn sm" id="addWish">＋ほしいものを追加</button></div>
-      <p class="hint">買い物メモ〜高額品まで。タグで絞り込み、購入したら「購入済」に。ワンボタンで積立目標に変換も。</p>
+      <div class="section-title"><h3>ほしいものリスト</h3><button class="btn sm" id="addWish">＋ほしいもの</button></div>
+      <p class="hint">買い物メモ〜高額品まで。タグで絞り込み、購入したら「購入済」に。積立目標にも変換可。</p>
       <div class="tagbar" id="wishTags"></div>
       <div id="wishSummary" class="acc-sub" style="margin-bottom:8px"></div>
       <div id="wishList"></div>
     </div>
+  </section>
+
+  <!-- 価格比較（分離） -->
+  <section id="tab-price" hidden>
     <div class="panel">
       <div class="section-title"><h3>価格比較</h3><button class="btn sm" id="addPrice">＋価格を記録</button></div>
       <p class="hint">品目をタップで展開。実質単価（100g / 本 / 個…）で比較して最安を表示します。</p>
@@ -146,7 +164,7 @@
         <div id="accList"></div>
       </div>
       <div class="panel">
-        <div class="section-title"><h3>口座の管理</h3><button class="btn sm" id="addAcc">＋口座を追加</button></div>
+        <div class="section-title"><h3>口座の管理</h3><button class="btn sm" id="addAcc">＋口座</button></div>
         <div id="accManage"></div>
       </div>
     </div>
@@ -154,7 +172,7 @@
 
   <section id="tab-cards" hidden>
     <div class="panel">
-      <div class="section-title"><h3>カード請求サイクル（締め日ベース）</h3><span class="pill">締め日・引落日で自動集計</span></div>
+      <div class="section-title"><h3>カード請求サイクル</h3><span class="pill">締め日ベース</span></div>
       <div id="cardCycles"></div>
     </div>
   </section>
@@ -169,23 +187,23 @@
 
   <section id="tab-settings" hidden>
     <div class="panel">
-      <div class="section-title"><h3>固定費・定期収入（毎月/隔月ほか・営業日調整対応）</h3><button class="btn sm" id="addRec">＋テンプレを追加</button></div>
-      <p class="hint">家賃・サブスク・給与や隔月の水道代などを登録。土日祝は翌/前営業日に自動調整できます。</p>
+      <div class="section-title"><h3>固定費・定期収入</h3><button class="btn sm" id="addRec">＋テンプレ</button></div>
+      <p class="hint">家賃・サブスク・給与や隔月の水道代など。土日祝は翌/前営業日に自動調整できます。</p>
       <div id="recList"></div>
     </div>
     <div class="panel">
-      <div class="section-title"><h3>レシートテンプレート</h3><button class="btn sm" id="addTpl">＋テンプレを追加</button></div>
-      <p class="hint">よく買う組み合わせ（店・カテゴリ構成・支払手段）を保存。入力画面の「テンプレ」から1タップで呼び出せます。</p>
+      <div class="section-title"><h3>レシートテンプレート</h3><button class="btn sm" id="addTpl">＋テンプレ</button></div>
+      <p class="hint">よく買う組み合わせ（店・カテゴリ・支払・電卓/レシート）を保存。入力画面から1タップ呼び出し。</p>
       <div id="tplList"></div>
     </div>
     <div class="panel">
-      <div class="section-title"><h3>読み仮名の管理</h3><button class="btn sm" id="addReading">＋読みを追加</button></div>
-      <p class="hint">店名・品目などの「よみ」を登録すると、漢字でもひらがな検索でヒットします（入力時に自動記録もされます）。</p>
+      <div class="section-title"><h3>読み仮名の管理</h3><button class="btn sm" id="addReading">＋読み</button></div>
+      <p class="hint">店名・品目の「よみ」を登録すると、漢字でもひらがな検索でヒットします。</p>
       <div id="readingList"></div>
     </div>
     <div class="panel">
       <h3>カテゴリ</h3>
-      <p class="hint">小カテゴリを自由に追加できます。大／中を選んで小カテゴリ名を入れてください。</p>
+      <p class="hint">小カテゴリを自由に追加できます。</p>
       <div class="row">
         <div class="field"><label>種別</label><select id="catKind"><option value="expense">費用</option><option value="income">収入</option></select></div>
         <div class="field"><label>大カテゴリ</label><input id="catTop" list="dl-top" placeholder="例: 食費"></div>
@@ -197,21 +215,30 @@
       <div id="catTree" style="margin-top:12px"></div>
     </div>
     <div class="panel">
-      <h3>データ（バックアップ / 端末間移行 / 開発）</h3>
-      <p class="hint">CSVは1行=1明細（借方/貸方）のジャーナル形式。取込時に「全置換／上書き更新／既存を保持」を選べます。JSONは完全バックアップ用。</p>
+      <h3>データ（バックアップ / 移行）</h3>
+      <p class="hint">CSVは1行=1明細のジャーナル形式。取込時に全置換/上書き/保持を選択。JSONは完全バックアップ。</p>
       <div class="row">
-        <button class="btn ghost" id="exportCsv">CSV書き出し</button>
-        <button class="btn ghost" id="importCsv">CSV読み込み</button>
+        <button class="btn ghost" id="exportCsv">CSV書出</button>
+        <button class="btn ghost" id="importCsv">CSV読込</button>
         <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
-        <button class="btn ghost" id="exportBtn">JSON書き出し</button>
-        <button class="btn ghost" id="importBtn">JSON読み込み</button>
+        <button class="btn ghost" id="exportBtn">JSON書出</button>
+        <button class="btn ghost" id="importBtn">JSON読込</button>
         <input type="file" id="importFile" accept="application/json" hidden>
-        <button class="btn ghost" id="loadDummy">ダミーデータ投入</button>
-        <button class="btn danger" id="resetBtn">全データ初期化</button>
+        <button class="btn ghost" id="loadDummy">ダミー投入</button>
+        <button class="btn danger" id="resetBtn">全初期化</button>
       </div>
     </div>
   </section>
 </div>
+
+<!-- 下タブ（スマホ） -->
+<nav class="bottom-nav" id="bottomNav">
+  <button data-tab="entry" class="active"><span class="bn-ic">✎</span><span class="bn-tx">入力</span></button>
+  <button data-tab="list"><span class="bn-ic">☰</span><span class="bn-tx">一覧</span></button>
+  <button data-tab="drill"><span class="bn-ic">◔</span><span class="bn-tx">分析</span></button>
+  <button data-tab="budget"><span class="bn-ic">◈</span><span class="bn-tx">予算</span></button>
+  <button data-menu="1"><span class="bn-ic">≡</span><span class="bn-tx">メニュー</span></button>
+</nav>
 
 <datalist id="dl-store"></datalist>
 <datalist id="dl-branch"></datalist>
@@ -220,11 +247,9 @@
 <div class="modal-bg" id="modalBg"><div class="modal" id="modal"></div></div>
 <div class="toast" id="toast"></div>
 
-<!-- Supabase JS -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="config.js"></script>
 <script src="model.js"></script>
-<!-- cloud.js が認証後に app.js を注入します -->
 <script src="cloud.js"></script>
 </body>
 </html>

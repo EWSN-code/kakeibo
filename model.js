@@ -1,6 +1,5 @@
 /* =====================================================================
- * model.js  ―  会計エンジン / データモデル / 既定データ / ダミー
- * v0.7 相当（v1 でも無改修）
+ * model.js  ―  会計エンジン / データモデル / 既定データ / ダミー （無改修）
  * ===================================================================== */
 (function (root) {
   'use strict';
@@ -35,6 +34,7 @@
     if (!s.budgets) s.budgets = {}; if (!s.goals) s.goals = []; if (!s.wishlist) s.wishlist = []; if (!s.priceLogs) s.priceLogs = [];
     if (s.budgetRollover == null) s.budgetRollover = false; if (!s.templates) s.templates = []; if (!s.readings) s.readings = {};
     for (const w of s.wishlist) { if (!w.tags) w.tags = []; if (!w.status) w.status = 'active'; if (!('store' in w)) w.store = ''; if (!('url' in w)) w.url = ''; }
+    for (const t of s.templates) { if (!t.padMode) t.padMode = 'calc'; }
     if (s.version == null || s.version < 7) s.version = 7; return s;
   }
 
@@ -47,11 +47,7 @@
       .replace(/[（]/g, '(').replace(/[）]/g, ')').replace(/[　]/g, ' ');
   }
   function normReading(str) { let s = String(str == null ? '' : str).toLowerCase(); s = s.replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60)); s = s.replace(/[ー・\s（）()･]/g, ''); return s; }
-  function matchCandidates(candidates, query, limit, readings) {
-    const q = normReading(query); if (!q) return []; const out = [];
-    for (const c of candidates) { const key = normReading(c); const yomi = readings && readings[c] ? normReading(readings[c]) : ''; if (key.includes(q) || (yomi && yomi.includes(q))) { out.push(c); if (out.length >= (limit || 8)) break; } }
-    return out;
-  }
+  function matchCandidates(candidates, query, limit, readings) { const q = normReading(query); if (!q) return []; const out = []; for (const c of candidates) { const key = normReading(c); const yomi = readings && readings[c] ? normReading(readings[c]) : ''; if (key.includes(q) || (yomi && yomi.includes(q))) { out.push(c); if (out.length >= (limit || 8)) break; } } return out; }
 
   function pad2(n) { return String(n).padStart(2, '0'); }
   function ymd(y, m, d) { return y + '-' + pad2(m) + '-' + pad2(d); }
@@ -176,26 +172,22 @@
       { id: 'w_chair', name: 'ワークチェア', price: 60000, desiredYM: '2027-02', priority: 3, note: '腰対策', goalId: null, tags: ['高額', '実店舗で試す'], status: 'active', store: '', url: '' },
       { id: 'w_knife', name: '包丁(三徳)', price: 8000, desiredYM: '2026-09', priority: 1, note: '', goalId: null, tags: ['ニトリで', 'キッチン'], status: 'active', store: 'ニトリ', url: '' },
       { id: 'w_spice', name: 'クミンパウダー', price: 400, desiredYM: null, priority: 4, note: 'カレー用', goalId: null, tags: ['スーパーで', '食材'], status: 'active', store: '', url: '' },
-      { id: 'w_socks', name: '靴下(まとめ買い)', price: 1500, desiredYM: null, priority: 5, note: '', goalId: null, tags: ['ネットで買う'], status: 'active', store: '', url: '' },
       { id: 'w_book', name: 'DSPの本', price: 4200, desiredYM: '2026-10', priority: 3, note: '', goalId: null, tags: ['ネットで買う', '書籍'], status: 'done', store: '', url: '' },
     ];
     s.priceLogs = [
       { id: 'pl_1', item: '卵(10個)', date: '2026-08-03', store: 'スーパーマルエツ', branch: '駅前店', price: 248, qty: 10, unit: '個', note: '' },
       { id: 'pl_2', item: '卵(10個)', date: '2026-08-08', store: 'イオン', branch: '本店', price: 268, qty: 10, unit: '個', note: 'Lサイズ' },
       { id: 'pl_3', item: '牛乳', date: '2026-06-05', store: 'スーパーマルエツ', branch: '駅前店', price: 218, qty: 1000, unit: 'ml', note: '' },
-      { id: 'pl_3b', item: '牛乳', date: '2026-06-20', store: 'イオン', branch: '本店', price: 205, qty: 1000, unit: 'ml', note: '' },
       { id: 'pl_3c', item: '牛乳', date: '2026-07-06', store: 'スーパーマルエツ', branch: '駅前店', price: 212, qty: 1000, unit: 'ml', note: '' },
-      { id: 'pl_3d', item: '牛乳', date: '2026-07-22', store: 'イオン', branch: '本店', price: 198, qty: 1000, unit: 'ml', note: '' },
       { id: 'pl_3e', item: '牛乳', date: '2026-08-03', store: 'スーパーマルエツ', branch: '駅前店', price: 208, qty: 1000, unit: 'ml', note: '' },
       { id: 'pl_4', item: '牛乳', date: '2026-08-08', store: 'イオン', branch: '本店', price: 178, qty: 1000, unit: 'ml', note: '特売' },
       { id: 'pl_5', item: '鶏むね肉', date: '2026-08-03', store: 'スーパーマルエツ', branch: '駅前店', price: 580, qty: 600, unit: 'g', note: '' },
       { id: 'pl_6', item: '鶏むね肉', date: '2026-08-10', store: '肉のハナマサ', branch: '', price: 780, qty: 1, unit: 'kg', note: '業務用' },
-      { id: 'pl_7', item: 'トイレットペーパー', date: '2026-08-08', store: 'イオン', branch: '本店', price: 398, qty: 12, unit: '個', note: 'ダブル' },
     ];
     s.templates = [
-      { id: 'tpl_1', name: 'いつものスーパー(食材)', store: 'スーパーマルエツ', branch: '駅前店', creditAccId: 'a_cash', items: [{ catPath: 'exp>食費>食材>肉・魚', amount: 0 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 0 }, { catPath: 'exp>食費>食材>主食', amount: 0 }] },
-      { id: 'tpl_2', name: 'コンビニ弁当', store: '', branch: '', creditAccId: 'a_cash', items: [{ catPath: 'exp>食費>中食>惣菜・弁当', amount: 0 }] },
-      { id: 'tpl_3', name: 'ランチ(カード)', store: '定食屋つくし', branch: '', creditAccId: 'a_rcard', items: [{ catPath: 'exp>食費>外食>ランチ', amount: 0 }] },
+      { id: 'tpl_1', name: 'いつものスーパー(食材)', store: 'スーパーマルエツ', branch: '駅前店', creditAccId: 'a_cash', padMode: 'receipt', items: [{ catPath: 'exp>食費>食材>肉・魚', amount: 0 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 0 }, { catPath: 'exp>食費>食材>主食', amount: 0 }] },
+      { id: 'tpl_2', name: 'コンビニ弁当', store: '', branch: '', creditAccId: 'a_cash', padMode: 'calc', items: [{ catPath: 'exp>食費>中食>惣菜・弁当', amount: 0 }] },
+      { id: 'tpl_3', name: 'ランチ(カード)', store: '定食屋つくし', branch: '', creditAccId: 'a_rcard', padMode: 'calc', items: [{ catPath: 'exp>食費>外食>ランチ', amount: 0 }] },
     ];
     s.readings = { 'スーパーマルエツ': 'すーぱーまるえつ', 'イオン': 'いおん', '肉のハナマサ': 'にくのはなまさ', '喫茶マチ': 'きっさまち', '定食屋つくし': 'ていしょくやつくし', '居酒屋とり平': 'いざかやとりへい', '紀伊國屋書店': 'きのくにやしょてん', '牛乳': 'ぎゅうにゅう', '鶏むね肉': 'とりむねにく', '卵(10個)': 'たまご' };
     const T = []; const P = (...a) => T.push(...a);
@@ -209,30 +201,16 @@
     P(buildExpense({ date: '2026-06-11', catPath: 'exp>趣味・娯楽>サブスク', amount: 1580, credits: [{ accId: 'a_rcard', amount: 1580 }], store: 'Adobe' }));
     P(buildTransfer({ date: '2026-06-14', fromAccId: 'a_cash', toAccId: 'a_waon', amount: 5000, store: 'イオン', branch: '本店', memo: 'WAONチャージ' }));
     P(buildExpense({ date: '2026-06-14', items: [{ catPath: 'exp>食費>食材>野菜・果物', amount: 640 }, { catPath: 'exp>日用品>消耗品', amount: 980 }], credits: [{ accId: 'a_waon', amount: 1620 }], store: 'イオン', branch: '本店' }));
-    P(buildExpense({ date: '2026-06-15', catPath: 'exp>水道光熱費>水道', amount: 4200, credits: [{ accId: 'a_bank', amount: 4200 }], store: '水道局', memo: '固定費' }));
-    P(buildExpense({ date: '2026-06-18', catPath: 'exp>交通費>電車・バス', amount: 3000, credits: [{ accId: 'a_cash', amount: 3000 }], store: '駅券売機', memo: 'Suica簡易チャージ' }));
     P(buildExpense({ date: '2026-06-22', catPath: 'exp>水道光熱費>電気', amount: 6200, credits: [{ accId: 'a_bank', amount: 6200 }], store: '東京電力' }));
     P(buildIncome({ date: '2026-07-25', accId: 'a_bank', catPath: 'inc>給与', amount: 285000, store: '勤務先' }));
     P(buildCardPayment({ date: '2026-07-27', cardAccId: 'a_rcard', bankAccId: 'a_bank', amount: 2680, cycleKey: '2026-06', payDate: '2026-07-27' }));
     P(buildExpense({ date: '2026-07-02', catPath: 'exp>住居>家賃', amount: 78000, credits: [{ accId: 'a_bank', amount: 78000 }], store: '管理会社' }));
-    P(buildPrepaidGoods({ date: '2026-07-03', toAccId: 'a_cof', paid: 5000, qty: 11, fromAccId: 'a_cash', store: '喫茶マチ', branch: '本店', memo: '11枚つづり' }));
-    P(buildPrepaidAmount({ date: '2026-07-03', toAccId: 'a_book', face: 5000, paid: 4500, fromAccId: 'a_cash', store: '金券ショップ' }));
-    P(buildExpense({ date: '2026-07-06', items: [{ catPath: 'exp>食費>食材>肉・魚', amount: 1580 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 720 }, { catPath: 'exp>食費>食材>乳・卵', amount: 430 }, { catPath: 'exp>食費>食材>嗜好品・菓子', amount: 360 }], credits: [{ accId: 'a_cash', amount: 2290 }, { accId: 'a_rpt', amount: 800 }], store: 'スーパーマルエツ', branch: '駅前店' }));
-    P(buildGoodsUse({ date: '2026-07-08', catPath: 'exp>食費>外食>カフェ・軽食', fromAccId: 'a_cof', unitCost: 5000 / 11, qty: 1, store: '喫茶マチ', branch: '本店' }));
+    P(buildExpense({ date: '2026-07-06', items: [{ catPath: 'exp>食費>食材>肉・魚', amount: 1580 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 720 }, { catPath: 'exp>食費>食材>乳・卵', amount: 430 }], credits: [{ accId: 'a_cash', amount: 1930 }, { accId: 'a_rpt', amount: 800 }], store: 'スーパーマルエツ', branch: '駅前店' }));
     P(buildExpense({ date: '2026-07-10', catPath: 'exp>食費>外食>ディナー', amount: 3600, credits: [{ accId: 'a_rcard', amount: 3600 }], store: '居酒屋とり平' }));
-    P(buildExpense({ date: '2026-07-13', catPath: 'exp>被服・美容>衣類', amount: 4900, credits: [{ accId: 'a_rcard', amount: 4900 }], store: 'ユニクロ', branch: '駅ビル店' }));
-    P(buildTransfer({ date: '2026-07-15', fromAccId: 'a_cash', toAccId: 'a_waon', amount: 5000, store: 'イオン', branch: '本店', memo: 'WAONチャージ' }));
-    P(buildExpense({ date: '2026-07-15', items: [{ catPath: 'exp>食費>食材>主食', amount: 540 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 690 }, { catPath: 'exp>日用品>衛生用品', amount: 780 }], credits: [{ accId: 'a_waon', amount: 2010 }], store: 'イオン', branch: '本店' }));
-    P(buildGoodsUse({ date: '2026-07-18', catPath: 'exp>食費>外食>カフェ・軽食', fromAccId: 'a_cof', unitCost: 5000 / 11, qty: 1, store: '喫茶マチ', branch: '本店' }));
     P(buildExpense({ date: '2026-07-20', catPath: 'exp>通信費>携帯', amount: 2980, credits: [{ accId: 'a_rcard', amount: 2480 }, { accId: 'a_rpt', amount: 500 }], store: '楽天モバイル', memo: 'ポイント一部充当' }));
-    P(buildExpense({ date: '2026-07-22', catPath: 'exp>水道光熱費>電気', amount: 6800, credits: [{ accId: 'a_bank', amount: 6800 }], store: '東京電力' }));
-    P(buildIncome({ date: '2026-07-25', accId: 'a_rpt', catPath: 'inc>ポイント獲得', amount: 420, store: '楽天' }));
     P(buildExpense({ date: '2026-08-02', catPath: 'exp>住居>家賃', amount: 78000, credits: [{ accId: 'a_bank', amount: 78000 }], store: '管理会社' }));
     P(buildExpense({ date: '2026-08-03', items: [{ catPath: 'exp>食費>食材>肉・魚', amount: 1420 }, { catPath: 'exp>食費>食材>野菜・果物', amount: 880 }, { catPath: 'exp>食費>食材>調味料・油', amount: 520 }], credits: [{ accId: 'a_cash', amount: 2820 }], store: 'スーパーマルエツ', branch: '駅前店' }));
     P(buildExpense({ date: '2026-08-05', catPath: 'exp>食費>外食>ランチ', amount: 1250, credits: [{ accId: 'a_rcard', amount: 1250 }], store: '定食屋つくし' }));
-    P(buildGoodsUse({ date: '2026-08-06', catPath: 'exp>食費>外食>カフェ・軽食', fromAccId: 'a_cof', unitCost: 5000 / 11, qty: 2, store: '喫茶マチ', branch: '本店' }));
-    P(buildTransfer({ date: '2026-08-08', fromAccId: 'a_cash', toAccId: 'a_waon', amount: 5000, store: 'イオン', branch: '本店', memo: 'WAONチャージ' }));
-    P(buildExpense({ date: '2026-08-08', items: [{ catPath: 'exp>食費>食材>主食', amount: 610 }, { catPath: 'exp>食費>食材>飲料', amount: 450 }, { catPath: 'exp>日用品>消耗品', amount: 1200 }], credits: [{ accId: 'a_waon', amount: 2260 }], store: 'イオン', branch: '本店' }));
     P(buildExpense({ date: '2026-08-09', catPath: 'exp>趣味・娯楽>書籍', amount: 1200, credits: [{ accId: 'a_book', amount: 1200 }], store: '紀伊國屋書店', branch: '新宿本店' }));
     P(buildExpense({ date: '2026-08-10', catPath: 'exp>交際費>飲み会', amount: 4200, credits: [{ accId: 'a_rcard', amount: 4200 }], store: '居酒屋とり平' }));
     s.transactions = T; s.meta.dummy = true;
