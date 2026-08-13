@@ -1,5 +1,5 @@
 /* =====================================================================
- * app.js ― UI / イベント / 状態管理  (v1.3)
+ * app.js ― UI / イベント / 状態管理  (v1.2)
  *  入力からサマリ撤去 / 「分析」タブ（収支=俯瞰・費用/収入=ドリル）
  *  下タブ＋ドロワー / カテゴリ2行 / ほしいもの・価格分離（v1.1踏襲）
  * ===================================================================== */
@@ -385,81 +385,7 @@
     draw(); showModal();
   }
 
-  
-
-/* ============ Excelインポート（移行専用 v1.3） ============ */
-let excelImport = null;
-const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
-function xlStr(v){ return v == null ? '' : String(v).trim(); }
-function xlNum(v){ if(v==null || v==='') return null; if(typeof v==='number') return isFinite(v)?v:null; const n=+String(v).replace(/[,¥\s]/g,''); return isFinite(n)?n:null; }
-function xlDate(v){
- if(v instanceof Date && !isNaN(v)) return v.toISOString().slice(0,10);
- if(typeof v==='number' && window.XLSX && XLSX.SSF){ const d=XLSX.SSF.parse_date_code(v); if(d) return `${d.y}-${String(d.m).padStart(2,'0')}-${String(d.d).padStart(2,'0')}`; }
- const s=xlStr(v); const m=s.match(/^(\d{1,4})[\/\-](\d{1,2})[\/\-](\d{1,4})$/); if(!m) return '';
- let a=+m[1],b=+m[2],c=+m[3]; if(a<=12 && c>1900) return `${c}-${String(a).padStart(2,'0')}-${String(b).padStart(2,'0')}`; return `${a}-${String(b).padStart(2,'0')}-${String(c).padStart(2,'0')}`;
-}
-function importExcel(file){
- if(!window.XLSX) return toast('Excel読込ライブラリを読み込めませんでした。オンラインで再読み込みしてください。');
- const r=new FileReader();
- r.onload=()=>{ try{ const wb=XLSX.read(r.result,{type:'array',cellDates:true,raw:true}); const sheets=wb.SheetNames.map(n=>xlParseSheet(n,wb.Sheets[n])).filter(x=>x.rows.length); if(!sheets.length) throw new Error('取込できる行がありません'); excelImport={fileName:file.name,sheets,selected:sheets.reduce((b,x,i)=>x.rows.length>sheets[b].rows.length?i:b,0)}; xlOpenModal(); }catch(e){ console.error(e); toast('Excel読込失敗: '+e.message); } };
- r.readAsArrayBuffer(file);
-}
-function xlParseSheet(name,ws){
- const a=XLSX.utils.sheet_to_json(ws,{header:1,raw:true,defval:null}); const rows=[]; const issues=[];
- for(let i=1;i<a.length;i++){ const r=a[i]||[]; if(!r.some(v=>v!=null && String(v).trim()!=='')) continue; const rec={sheet:name,rowNo:i+1,date:xlDate(r[0]),store:xlStr(r[1]),branch:xlStr(r[2]),income:xlNum(r[3]),credit:xlNormAcc(r[4]),expense:xlNum(r[5]),pay:xlNormAcc(r[6]),balance:xlNum(r[7]),kou:xlStr(r[8]),me:xlStr(r[9]),sai:xlStr(r[10]),medical:xlNum(r[11]),memo:xlStr(r[12])}; if(!rec.date){issues.push(`${i+1}行目: 日付がないため除外`); continue;} rows.push(rec); }
- return {name,rows,issues};
-}
-function xlOpenModal(){
- const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
- $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
-}
-function xlPreview(){ const b=xlBuild(excelImport.sheets[excelImport.selected]); const r=b.report; $('#xl_preview').innerHTML=`<div class="excel-mini"><span class="tag">対象 ${r.rows}行</span><span class="tag">取引 ${b.transactions.length}件</span><span class="tag">支出 ${r.kinds.expense}</span><span class="tag">収入 ${r.kinds.income}</span><span class="tag">チャージ ${r.kinds.transfer}</span><span class="tag">前払 ${r.kinds.prepaid}</span><span class="tag">医療 ${r.kinds.medical}</span></div><details open><summary>検出口座</summary><div class="excel-tablewrap"><table><thead><tr><th>口座</th><th>種類</th><th class="num">推定期首</th></tr></thead><tbody>${b.accounts.map(a=>`<tr><td>${esc(a.name)}</td><td>${esc(M.ACCOUNT_SUBTYPES[a.subtype]?.label||a.subtype)}</td><td class="num">${yen(a.opening||0)}</td></tr>`).join('')}</tbody></table></div></details>${r.issues.length?`<details open><summary>注意 ${r.issues.length}件</summary><ul class="excel-issues">${r.issues.slice(0,20).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></details>`:''}`; }
-function xlCommit(){ const mode=($('input[name=xl_mode]:checked')||{}).value||'replace'; const sheet=excelImport.sheets[excelImport.selected]; const b=xlBuild(sheet); if(!b.transactions.length) return toast('取込できる取引がありません'); if(!confirm(`Excelから ${b.transactions.length}件を取り込みます。よろしいですか？`)) return; state.categories=b.categories; if(mode==='replace'){ state.accounts=b.accounts; state.transactions=b.transactions; } else { const names=new Set(state.accounts.map(a=>a.name)); b.accounts.forEach(a=>{if(!names.has(a.name)) state.accounts.push(a);}); const ids=new Set(state.transactions.map(t=>t.id)); b.transactions.forEach(t=>{if(!ids.has(t.id)) state.transactions.push(t);}); } state.meta=state.meta||{}; state.meta.lastExcelImport={fileName:excelImport.fileName,sheet:sheet.name,rows:sheet.rows.length,txCount:b.transactions.length,importedAt:new Date().toISOString(),mode}; persist(); closeModal(); refreshDatalists(); renderAll(); updateGlobalNotice(); switchTab('list'); toast(`Excelを取り込みました ✓ ${b.transactions.length}件`); }
-function xlBuild(sheet){
- const cats=M.deepClone(state.categories||M.DEFAULT_CATEGORIES); xlEnsureCats(cats); const accMap=new Map(), accounts=[]; const existing=new Map(state.accounts.map(a=>[a.name,a])); const open=new Map(), cum=new Map(), usedAmt=new Map(), usedQty=new Map(); const report={rows:sheet.rows.length,kinds:{expense:0,income:0,transfer:0,prepaid:0,medical:0},issues:[...(sheet.issues||[])]};
- function acc(name,sub){ name=xlNormAcc(name)||'現金'; if(accMap.has(name)) return accMap.get(name); const ex=existing.get(name); const a=ex?M.deepClone(ex):{id:xlAccId(name,accounts),name,subtype:sub||xlSubtype(name),opening:0}; a.subtype=sub||a.subtype||xlSubtype(name); if(a.subtype==='card'&&!a.card)a.card={closingDay:99,payDay:27,payMonthsAfter:1}; if(a.subtype==='voucher_goods'&&!a.goods)a.goods={openingQty:0}; accMap.set(name,a); accounts.push(a); return a; }
- acc('現金','cash'); acc('銀行(メイン)','bank');
- const ticketUnit=xlTicketUnits(sheet.rows);
- function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
- sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
- accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
- accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
-}
-function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);
- if(r.kou==='口座入金'){type='transfer';from='銀行(メイン)';to=r.pay||'現金';amount=Math.abs(r.expense||0);aa(from,'bank');aa(to);ii(to,amount,r.balance);return {type,amount,from,to,cat,accs,impacts,goods,medical};}
- if(r.kou==='チャージ'&&(r.me==='交通'||/マナカ/.test(r.store))){type='expense';from=r.pay||'現金';cat='exp>交通費>電車・バス';aa(from);return {type,amount:Math.abs(r.expense||0),from,cat,accs,impacts,goods,medical};}
- if(r.kou==='チャージ'&&r.me==='外食'&&r.income&&r.expense){type='prepaid_goods';to=xlNormAcc(r.store.replace(/珈琲|コーヒー/g,'')+'チケット');from=r.pay||r.credit||'現金';face=Math.abs(r.income);paid=Math.abs(r.expense);qty=Math.max(1,Math.round(face/(ticketUnit.get(to)||960)));aa(to,'voucher_goods');aa(from);ii(to,face,r.balance,'voucher_goods');return {type,from,to,face,paid,qty,cat,accs,impacts,goods,medical};}
- if(r.kou==='チャージ'||r.me==='チャージ'){type='transfer';to=xlChargeTarget(r);from=r.credit||'現金';amount=Math.abs(r.expense||0);aa(from);aa(to);ii(to,amount,r.balance);return {type,amount,from,to,cat,accs,impacts,goods,medical};}
- if(r.kou==='ポイント'||r.me==='ポイント'){type='income';to=r.pay||r.credit||xlPointTarget(r);amount=Math.abs(r.income!=null?r.income:(r.expense||0));cat='inc>ポイント獲得';aa(to);ii(to,amount,r.balance);return {type,amount,to,cat,accs,impacts,goods,medical};}
- if(r.store==='楽天市場'&&r.branch==='Appleギフト'&&r.me==='積立金'){type='prepaid_amount';to='Appleギフト';from=r.pay||r.credit||'楽天カード';face=paid=Math.abs(r.expense||0);aa(to,'voucher_amount');aa(from);ii(to,face,null,'voucher_amount');return {type,from,to,face,paid,cat,accs,impacts,goods,medical};}
- if(r.income!=null&&!(r.income&&r.expense)){type='income';to=r.pay||r.credit||'銀行(メイン)';amount=Math.abs(r.income);cat=xlIncomeCat(r);aa(to);ii(to,amount,r.balance);return {type,amount,to,cat,accs,impacts,goods,medical,reimbursement:/診療報酬|医療費戻/.test(r.store+r.me+r.kou)};}
- if(r.expense!=null){ if(r.expense<0){type='income';to=r.pay||r.credit||'現金';amount=Math.abs(r.expense);cat='inc>返金';aa(to);return {type,amount,to,cat,accs,impacts,goods,medical};} type='expense';from=r.credit||r.pay||'現金';amount=Math.abs(r.expense);cat=xlExpenseCat(r);aa(from);ii(from,-amount,r.balance); if(xlGoods(from))goods={name:from,amount}; return {type,amount,from,cat,accs,impacts,goods,medical}; }
- return {type:'skip',amount:0,cat,accs,impacts,goods,medical}; }
-function xlTx(r,c,acc,report){ if(c.type==='skip'||(!c.amount&&!c.face))return null; const memo=xlMemo(r); let t=null; if(c.type==='expense'){const a=acc(c.from); t=M.buildMulti({date:r.date,debits:[{ref:'cat:'+c.cat,amount:c.amount}],credits:[{ref:'acc:'+a.id,amount:c.amount,qty:xlGoods(a.name)?1:undefined}],store:r.store,branch:r.branch,memo,kind:xlGoods(a.name)?'goods_use':'expense'});report.kinds.expense++;}
- else if(c.type==='income'){const a=acc(c.to); t=M.buildIncome({date:r.date,accId:a.id,catPath:c.cat,amount:c.amount,store:r.store,branch:r.branch,memo});report.kinds.income++;}
- else if(c.type==='transfer'){t=M.buildTransfer({date:r.date,fromAccId:acc(c.from).id,toAccId:acc(c.to).id,amount:c.amount,store:r.store,branch:r.branch,memo});report.kinds.transfer++;}
- else if(c.type==='prepaid_amount'){t=M.buildPrepaidAmount({date:r.date,toAccId:acc(c.to,'voucher_amount').id,fromAccId:acc(c.from).id,face:c.face,paid:c.paid,store:r.store,branch:r.branch,memo});report.kinds.prepaid++;}
- else if(c.type==='prepaid_goods'){const to=acc(c.to,'voucher_goods'),fr=acc(c.from); t=M.buildMulti({date:r.date,debits:[{ref:'acc:'+to.id,amount:c.face,qty:c.qty}],credits:[{ref:'acc:'+fr.id,amount:c.paid}].concat(c.face>c.paid?[{ref:'cat:inc>プレミアム益',amount:c.face-c.paid}]:[]),store:r.store,branch:r.branch,memo,kind:'prepaid_goods'});report.kinds.prepaid++;}
- if(t&&c.medical){t.meta=Object.assign({},t.meta||{},{medical:c.medical});report.kinds.medical++;} if(t&&c.reimbursement)t.meta=Object.assign({},t.meta||{},{medicalReimbursement:true}); return t; }
-function xlNormAcc(n){n=xlStr(n); if(!n||n==='0')return ''; if(n==='さくカード')return 'さくらカード'; if(n==='無印ポイント')return 'MUJIポイント'; if(n==='あかのれんP')return 'あかのれんポイント'; if(n==='アエナP')return 'アエナポイント'; return n;}
-function xlSubtype(n){n=xlNormAcc(n); if(!n||n==='現金')return 'cash'; if(/銀行|口座/.test(n))return 'bank'; if(/楽天カード/.test(n))return 'card'; if(xlGoods(n))return 'voucher_goods'; if(/ギフト|商品券|Vプリカ/.test(n))return 'voucher_amount'; if(/ポイント|値引き|P$/.test(n))return 'point'; if(n==='マナカ')return 'transit'; return 'emoney';}
-function xlGoods(n){n=xlNormAcc(n); return XL_GOODS.includes(n)||/チケット|優待券/.test(n);}
-function xlChargeTarget(r){if(r.pay)return r.pay; const s=r.store+r.branch; if(/平和堂/.test(s))return'HOPマネー'; if(/イオン/.test(s))return'WAON'; if(/スギヤマ/.test(s))return'スギヤママネー'; if(/エクボ/.test(s))return'さくらカード'; if(/コノミヤ/.test(s))return'コノミヤカード'; return'現金';}
-function xlPointTarget(r){const s=r.store+r.branch; if(/平和堂/.test(s))return'HOPマネー'; if(/イオン/.test(s))return'WAON'; return r.pay||r.credit||'現金';}
-function xlIncomeCat(r){const k=r.me||r.kou||r.store; if(/賞与/.test(k))return'inc>賞与'; if(/給与/.test(k))return'inc>給与'; if(/旅費/.test(k))return'inc>旅費精算'; if(/還付/.test(k))return'inc>還付金'; if(/診療報酬|医療/.test(k)||/診療報酬/.test(r.store))return'inc>医療費戻入'; if(/ポイント/.test(k))return'inc>ポイント獲得'; return'inc>その他収入';}
-function xlExpenseCat(r){const me=r.me||r.kou||'',s=r.sai||'',st=r.store||''; if(/医療交通/.test(me))return'exp>医療・健康>通院交通費'; if(/医療医薬|医薬品/.test(me)||r.kou==='医療費')return'exp>医療・健康>診察・薬'; if(/食材/.test(me))return s?`exp>食費>食材>${xlLeaf(s)}`:'exp>食費>食材'; if(/外食/.test(me))return'exp>食費>外食'; if(/日用品/.test(me)||/日用品費/.test(r.kou)){if(/被服|靴/.test(s))return'exp>被服・美容>衣類'; return'exp>日用品';} if(/光熱水/.test(me)){if(/電気/.test(st))return'exp>水道光熱費>電気'; if(/ガス/.test(st))return'exp>水道光熱費>ガス'; if(/水道/.test(st))return'exp>水道光熱費>水道'; return'exp>水道光熱費>その他';} if(/通信/.test(me)){return /携帯/.test(st)?'exp>通信費>携帯':'exp>通信費>ネット';} if(/交通|交通費/.test(me)||/定期券|免許|近鉄|新幹線|交通局/.test(st))return'exp>交通費>電車・バス'; if(/家賃/.test(me))return'exp>住居>家賃'; if(/保険/.test(me))return'exp>税・社会保険>保険'; if(/税金|国民年金/.test(me)||/税金/.test(r.kou))return'exp>税・社会保険>税金'; if(/趣味/.test(me))return'exp>趣味・娯楽'; if(/交際/.test(me))return'exp>交際費'; if(/特別/.test(me)||/特別/.test(r.kou))return'exp>その他>特別費'; return'exp>その他>雑費';}
-function xlLeaf(s){s=xlStr(s); if(/健康食品/.test(s))return'健康食品'; if(/被服/.test(s))return'衣類'; return s.replace(/費$/,'')||'その他';}
-function xlEnsureCats(c){['給与','賞与','旅費精算','還付金','医療費戻入','ポイント獲得','プレミアム益','返金','その他収入'].forEach(k=>{if(!c.income[k])c.income[k]={};}); c.expense['その他']=c.expense['その他']||{}; c.expense['その他']['特別費']=c.expense['その他']['特別費']||[]; c.expense['医療・健康']=c.expense['医療・健康']||{}; c.expense['医療・健康']['通院交通費']=c.expense['医療・健康']['通院交通費']||[]; c.expense['水道光熱費']=c.expense['水道光熱費']||{}; c.expense['水道光熱費']['その他']=c.expense['水道光熱費']['その他']||[]; c.expense['税・社会保険']=c.expense['税・社会保険']||{}; c.expense['税・社会保険']['保険']=c.expense['税・社会保険']['保険']||[]; c.expense['税・社会保険']['税金']=c.expense['税・社会保険']['税金']||[];}
-function xlEnsurePath(c,path){const [k,...p]=path.split('>'); const root=k==='inc'?c.income:c.expense; if(k==='inc'){root[p[0]]=root[p[0]]||{};return;} root[p[0]]=root[p[0]]||{}; if(p[1]){root[p[0]][p[1]]=root[p[0]][p[1]]||[]; if(p[2]&&!root[p[0]][p[1]].includes(p[2]))root[p[0]][p[1]].push(p[2]);}}
-function xlMedical(r){ if(r.medical==null&&r.kou!=='医療費'&&!/医療/.test(r.me||''))return null; return{eligibleAmount:r.medical==null?Math.abs(r.expense||0):r.medical,personMemo:r.memo||'',kind:/交通/.test(r.me||'')?'通院交通費':(/医薬品/.test(r.me||'')?'OTC候補':'通常医療費')};}
-function xlMemo(r){const a=[]; if(r.memo)a.push(r.memo); if(r.medical!=null)a.push('医療費控除対象額:'+r.medical); if(r.kou)a.push('項:'+r.kou); return a.join(' / ');}
-function xlTicketUnits(rows){const m=new Map(); rows.forEach(r=>{const n=xlNormAcc(r.credit||r.pay),am=Math.abs(r.expense||0); if(n&&am&&xlGoods(n)){const c=m.get(n)||new Map(); c.set(am,(c.get(am)||0)+1); m.set(n,c);}}); const out=new Map(); m.forEach((c,n)=>{out.set(n,[...c.entries()].sort((a,b)=>b[1]-a[1])[0][0]);}); return out;}
-function xlAccId(n,arr){let b='a_xl_'+xlSlug(n),id=b,i=2; const ids=new Set(state.accounts.map(a=>a.id).concat(arr.map(a=>a.id))); while(ids.has(id))id=b+'_'+i++; return id;}
-function xlSlug(s){return String(s||'').toLowerCase().replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff]+/g,'_').replace(/^_+|_+$/g,'').slice(0,24)||Math.random().toString(36).slice(2,8);}
-
-function download(name, text, type) { const blob = new Blob([text], { type }); const a = el('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
+  function download(name, text, type) { const blob = new Blob([text], { type }); const a = el('a'); a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click(); a.remove(); }
   function exportJSON() { download(`kakeibo_${M.todayStr()}.json`, JSON.stringify(state, null, 2), 'application/json'); toast('書き出しました'); }
   function exportCSV() { download(`kakeibo_${M.todayStr()}.csv`, '\ufeff' + M.serializeCSV(state), 'text/csv;charset=utf-8'); toast('CSVを書き出しました'); }
   function importJSON(file) { const r = new FileReader(); r.onload = () => { try { const data = JSON.parse(r.result); if (!data.accounts || !data.transactions) throw new Error('形式が不正'); if (!confirm('現在のデータを置き換えます。よろしいですか？')) return; state = M.migrate(data); persist(); refreshDatalists(); renderAll(); updateGlobalNotice(); toast('読み込みました ✓'); } catch (e) { toast('読み込み失敗: ' + e.message); } }; r.readAsText(file); }
@@ -623,7 +549,6 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     $('#catKind').addEventListener('change', renderCatTree); $('#addCat').addEventListener('click', addCategory);
     $('#exportBtn').addEventListener('click', exportJSON); $('#importBtn').addEventListener('click', () => $('#importFile').click()); $('#importFile').addEventListener('change', e => { if (e.target.files[0]) importJSON(e.target.files[0]); e.target.value = ''; });
     $('#exportCsv').addEventListener('click', exportCSV); $('#importCsv').addEventListener('click', () => $('#csvFile').click()); $('#csvFile').addEventListener('change', e => { if (e.target.files[0]) importCSV(e.target.files[0]); e.target.value = ''; });
-const xlBtn=$('#importExcel'); if(xlBtn)xlBtn.addEventListener('click',()=>$('#excelFile').click()); const xlFile=$('#excelFile'); if(xlFile)xlFile.addEventListener('change',e=>{if(e.target.files[0])importExcel(e.target.files[0]); e.target.value='';});
     $('#loadDummy').addEventListener('click', () => { if (confirm('現在のデータをダミーデータで置き換えます。よろしいですか？')) { state = M.makeDummy(); selected.clear(); persist(); refreshDatalists(); renderAll(); switchTab('entry'); updateGlobalNotice(); toast('ダミーデータを投入しました'); } });
     $('#resetBtn').addEventListener('click', () => { if (confirm('全データを初期化します。よろしいですか？')) { state = M.initialState(); selected.clear(); persist(); refreshDatalists(); renderAll(); switchTab('entry'); updateGlobalNotice(); toast('初期化しました'); } });
     $('#modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg') closeModal(); });
