@@ -351,6 +351,6 @@ svg .bar-exp{fill:var(--danger)}
 #xl_preview summary{cursor:pointer;font-weight:600}
 
 
-/* Excel import v1.3.1 */
+/* v1.3.2 migration/list helpers */
 .alias-row{display:grid;grid-template-columns:1fr 1fr 150px;gap:8px;align-items:center;margin:6px 0}
 @media(max-width:760px){.alias-row{grid-template-columns:1fr}.alias-row .muted{font-size:12px}}

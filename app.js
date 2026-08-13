@@ -1,5 +1,5 @@
 /* =====================================================================
- * app.js ― UI / イベント / 状態管理  (v1.3.1)
+ * app.js ― UI / イベント / 状態管理  (v1.3)
  *  入力からサマリ撤去 / 「分析」タブ（収支=俯瞰・費用/収入=ドリル）
  *  下タブ＋ドロワー / カテゴリ2行 / ほしいもの・価格分離（v1.1踏襲）
  * ===================================================================== */
@@ -13,7 +13,7 @@
 
   let ui = {};
   function resetEntryState() {
-    ui.editId = null;
+    ui.editId = null; ui.editNextId = null;
     ui.exp = { debits: [{ path: '', amt: '', ratio: '' }], credits: [{ accId: '', amt: '' }], detail: false, total: '', ratioMode: false };
     ui._store = ''; ui._branch = ''; ui._memo = ''; ui._date = ui._date || M.todayStr();
     ui._amt = ''; ui._catPath = ''; ui._accId = ''; ui._fromId = ''; ui._toId = '';
@@ -163,10 +163,10 @@
   let storeTimer = null;
   function onStoreInput() { const store = $('#f_store').value.trim(); if (store && $('#f_branch') && !$('#f_branch').value) { const b = M.storeBranchDefault(state, store); if (b) $('#f_branch').value = b; } clearTimeout(storeTimer); storeTimer = setTimeout(renderStoreChips, 150); }
   function renderPrepaidFields() { const host = $('#prepaidFields'); if (!host) return; const acc = accById($('#f_to').value); const sub = acc ? acc.subtype : 'voucher_amount'; const pp = ui._prepaid || {}; if (sub === 'voucher_goods') { host.innerHTML = `<div class="row"><div class="field"><label>支払額（実際に払った合計）</label><input type="number" id="p_paid" value="${pp.paid || ''}" placeholder="例: 5000"></div><div class="field"><label>枚数</label><input type="number" id="p_qty" value="${pp.qty || ''}" placeholder="例: 11"></div></div><p class="hint" id="p_unit">原価主義：1枚あたり原価で費用化されます。</p>`; const upd = () => { const paid = +$('#p_paid').value, q = +$('#p_qty').value; $('#p_unit').textContent = (paid && q) ? `原価主義：1枚 = ${yen(paid / q)}（利用時にこの単価で費用化）` : '原価主義：1枚あたり原価で費用化されます。'; }; $('#p_paid').addEventListener('input', upd); $('#p_qty').addEventListener('input', upd); upd(); } else { host.innerHTML = `<div class="row"><div class="field"><label>額面（資産計上額）</label><input type="number" id="p_face" value="${pp.face || ''}" placeholder="例: 6050"></div><div class="field"><label>支払額（実際に払った額）</label><input type="number" id="p_paid" value="${pp.paid || ''}" placeholder="例: 5000"></div></div><p class="hint" id="p_prem">金額型：差額はプレミアム益(収入)に計上されます。</p>`; const upd = () => { const f = +$('#p_face').value, p = +$('#p_paid').value; $('#p_prem').textContent = (f && p) ? `プレミアム益 = ${yen(f - p)}（額面 ${yen(f)} − 支払 ${yen(p)}）` : '金額型：差額はプレミアム益(収入)に計上されます。'; }; $('#p_face').addEventListener('input', upd); $('#p_paid').addEventListener('input', upd); upd(); } attachHankakuAll(host); }
-  function renderEditBanner() { const b = $('#editBanner'); if (!b) return; b.innerHTML = ui.editId ? `<div class="edit-banner"><span>✏️ 取引を編集中です。更新すると上書きされます。</span><button class="btn ghost sm" id="cancelEdit">編集をやめる</button></div>` : ''; const c = $('#cancelEdit'); if (c) c.addEventListener('click', () => { resetEntryState(); renderEntry(); toast('編集をやめました'); }); }
+  function renderEditBanner() { const b = $('#editBanner'); if (!b) return; const nextMsg = ui.editNextId ? '更新後、次の取引を自動で開きます。' : '更新後、この編集を終了します。'; b.innerHTML = ui.editId ? `<div class="edit-banner"><span>✏️ 取引を編集中です。${nextMsg}</span><button class="btn ghost sm" id="cancelEdit">編集をやめる</button></div>` : ''; const c = $('#cancelEdit'); if (c) c.addEventListener('click', () => { resetEntryState(); renderEntry(); toast('編集をやめました'); }); }
 
   function onSubmit() {
-    const type = ui.type; const store = $('#f_store') ? $('#f_store').value : ''; const branch = $('#f_branch') ? $('#f_branch').value : ''; const date = $('#f_date') ? $('#f_date').value : M.todayStr(); const memo = $('#f_memo') ? $('#f_memo').value : ''; const id = ui.editId; let t;
+    const type = ui.type; const nextEditId = ui.editNextId; const store = $('#f_store') ? $('#f_store').value : ''; const branch = $('#f_branch') ? $('#f_branch').value : ''; const date = $('#f_date') ? $('#f_date').value : M.todayStr(); const memo = $('#f_memo') ? $('#f_memo').value : ''; const id = ui.editId; let t;
     try {
       if (type === 'expense') {
         syncExpFromDOM();
@@ -189,13 +189,15 @@
     } catch (e) { console.error(e); return toast('入力エラー: ' + e.message); }
     const errs = M.validateTransaction(t); if (errs.length) { if (!confirm('⚠ ' + errs.join(' / ') + '\nこのまま登録しますか？')) return; }
     if (id) { const idx = state.transactions.findIndex(x => x.id === id); if (idx >= 0) state.transactions[idx] = t; toast('更新しました ✓'); } else { state.transactions.push(t); toast('記帳しました ✓'); }
-    persist(); refreshDatalists(); const keepDate = ui._date; resetEntryState(); ui._date = keepDate; renderEntry(); renderList(); renderAccounts(); renderReport(); renderCards(); renderDrill(); renderBudget();
+    persist(); refreshDatalists(); const keepDate = ui._date; resetEntryState(); ui._date = keepDate; renderEntry(); renderList(); renderAccounts(); renderReport(); renderCards(); renderDrill(); renderBudget(); if (id && nextEditId && state.transactions.some(x=>x.id===nextEditId)) { setTimeout(()=>loadForEdit(nextEditId), 0); }
   }
+
+  function nextEditIdFor(id) { const rows = filteredRows(); const i = rows.findIndex(t => t.id === id); return i >= 0 && i + 1 < rows.length ? rows[i + 1].id : null; }
 
   function loadForEdit(id) {
     const t = state.transactions.find(x => x.id === id); if (!t) return;
     if (t.kind === 'card_payment') { openCardPayEditModal(t); return; }
-    const keepDate = ui._date; resetEntryState(); ui.editId = id; ui._store = t.store; ui._branch = t.branch; ui._date = t.date; ui._memo = t.memo;
+    const keepDate = ui._date; resetEntryState(); ui.editId = id; ui.editNextId = nextEditIdFor(id); ui._store = t.store; ui._branch = t.branch; ui._date = t.date; ui._memo = t.memo;
     const debits = t.lines.filter(l => l.amount > 0), credits = t.lines.filter(l => l.amount < 0);
     if (t.kind === 'expense') { ui.type = 'expense'; ui.exp.debits = debits.filter(l => l.ref.startsWith('cat:')).map(l => ({ path: l.ref.slice(4), amt: String(l.amount), ratio: '' })); const accC = credits.filter(l => l.ref.startsWith('acc:')); ui.exp.credits = accC.map(l => ({ accId: l.ref.slice(4), amt: String(-l.amount) })); ui.exp.detail = accC.length > 1; if (!ui.exp.debits.length) ui.exp.debits = [{ path: '', amt: '', ratio: '' }]; }
     else if (t.kind === 'income') { ui.type = 'income'; ui._accId = debits[0] ? debits[0].ref.slice(4) : ''; const cat = credits.find(l => l.ref.startsWith('cat:')); ui._catPath = cat ? cat.ref.slice(4) : ''; ui._amt = String((debits[0] || { amount: '' }).amount); }
@@ -210,7 +212,8 @@
 
   /* ============ 取引一覧 ============ */
   const KIND_TAG = { expense: ['exp', '支出'], income: ['inc', '収入'], transfer: ['mv', '振替'], card_payment: ['mv', 'カード引落'], prepaid_amount: ['mv', '前払(金)'], prepaid_goods: ['mv', '前払(物)'], goods_use: ['exp', '現物利用'], generic: ['mv', '—'] };
-  function filteredRows() { const ym = $('#fltYm').value, catTop = $('#fltCat').value, kind = $('#fltKind').value, kw = ($('#fltText').value || '').trim(); let rows = state.transactions.slice().sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)); if (ym) rows = rows.filter(t => t.date.startsWith(ym)); if (catTop) rows = rows.filter(t => t.lines.some(l => l.ref.startsWith('cat:') && l.ref.includes('>' + catTop))); if (kind) rows = rows.filter(t => t.kind === kind); if (kw) rows = rows.filter(t => { const catText = t.lines.filter(l => l.ref.startsWith('cat:')).map(l => l.ref.slice(4)).join(' '); return (t.store + ' ' + t.branch + ' ' + t.memo + ' ' + catText).includes(kw); }); return rows; }
+  function txPositiveAmount(t) { return t.lines.filter(l => l.amount > 0).reduce((sum, l) => sum + l.amount, 0); }
+  function filteredRows() { const ym = $('#fltYm').value, catTop = $('#fltCat').value, kind = $('#fltKind').value, kw = ($('#fltText').value || '').trim(), sort = ($('#fltSort') ? $('#fltSort').value : 'date_desc'); let rows = state.transactions.slice(); if (ym) rows = rows.filter(t => t.date.startsWith(ym)); if (catTop) rows = rows.filter(t => t.lines.some(l => l.ref.startsWith('cat:') && l.ref.includes('>' + catTop))); if (kind) rows = rows.filter(t => t.kind === kind); if (kw) rows = rows.filter(t => { const catText = t.lines.filter(l => l.ref.startsWith('cat:')).map(l => l.ref.slice(4)).join(' '); return (t.store + ' ' + t.branch + ' ' + t.memo + ' ' + catText).includes(kw); }); const cmpDateAsc = (a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id); const cmpAmtAsc = (a,b)=>txPositiveAmount(a)-txPositiveAmount(b)||cmpDateAsc(a,b); rows.sort((a,b)=> sort==='date_asc'?cmpDateAsc(a,b):sort==='amount_desc'?cmpAmtAsc(b,a):sort==='amount_asc'?cmpAmtAsc(a,b):cmpDateAsc(b,a)); return rows; }
   function renderList() {
     if (!$('#fltKind').dataset.filled) { $('#fltKind').innerHTML = `<option value="">すべて</option>` + Object.entries(KIND_TAG).filter(([k]) => k !== 'generic').map(([k, v]) => `<option value="${k}">${v[1]}</option>`).join(''); $('#fltKind').dataset.filled = '1'; }
     if (!$('#fltCat').dataset.filled) { const tops = [...new Set(Object.keys(state.categories.expense).concat(Object.keys(state.categories.income)))]; $('#fltCat').innerHTML = `<option value="">すべて</option>` + tops.map(t => `<option>${t}</option>`).join(''); $('#fltCat').dataset.filled = '1'; }
@@ -396,7 +399,7 @@
 
   
 
-/* ============ Excelインポート（移行専用 v1.3.1） ============ */
+/* ============ Excelインポート（移行専用 v1.3.2） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -420,7 +423,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.1）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.2）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -435,7 +438,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.1',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.2',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);
@@ -619,8 +622,8 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     $('#drawerBg').addEventListener('click', closeDrawer);
     $('#typebar').addEventListener('click', e => { if (e.target.dataset.type) { ui.type = e.target.dataset.type; renderEntry(); } });
     $('#ym').addEventListener('change', onMonthChange); $('#ymPrev').addEventListener('click', () => shiftMonth(-1)); $('#ymNext').addEventListener('click', () => shiftMonth(1)); $('#ymToday').addEventListener('click', () => { $('#ym').value = M.curYM(); onMonthChange(); });
-    ['#fltYm', '#fltCat', '#fltKind', '#fltText'].forEach(s => $(s).addEventListener('input', renderList));
-    $('#fltClear').addEventListener('click', () => { $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; renderList(); });
+    ['#fltYm', '#fltCat', '#fltKind', '#fltText', '#fltSort'].forEach(s => { const e=$(s); if(e)e.addEventListener('input', renderList); });
+    $('#fltClear').addEventListener('click', () => { $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; if($('#fltSort')) $('#fltSort').value = 'date_desc'; renderList(); });
     $('#chkAll').addEventListener('change', e => { const rows = filteredRows(); if (e.target.checked) rows.forEach(r => selected.add(r.id)); else rows.forEach(r => selected.delete(r.id)); renderList(); });
     $('#drillKind').addEventListener('change', e => { drill.kind = e.target.value; drill.parts = []; drill.leaf = null; renderDrill(); });
     $('#addAcc').addEventListener('click', () => openAccountModal(null)); $('#addRec').addEventListener('click', () => openRecModal(null));
