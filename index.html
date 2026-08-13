@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<title>家計簿 v1.2 ― 複式簿記ハイブリッド</title>
+<title>家計簿 v1.3.1 ― 複式簿記ハイブリッド</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -36,7 +36,7 @@
 <div class="app">
   <header class="top">
     <button class="hamburger" id="hamburger" title="メニュー">≡</button>
-    <div class="brand">家計簿 <small>v1.2</small></div>
+    <div class="brand">家計簿 <small>v1.3.1</small></div>
     <div class="cur-tab" id="curTabName"></div>
     <div class="spacer"></div>
     <div class="account-bar" id="accountBar"></div>
@@ -199,6 +199,7 @@
         <div class="field" style="flex:0 0 auto; display:flex; align-items:flex-end"><button class="btn sm" id="addCat">追加</button></div>
       </div>
       <datalist id="dl-top"></datalist>
+      <div class="row" style="margin-top:8px"><button class="btn ghost sm" id="renameCat">カテゴリ名変更</button><button class="btn danger sm" id="deleteUnusedCat">未使用カテゴリ削除</button></div>
       <div id="catTree" style="margin-top:12px"></div>
     </div>
     <div class="panel">
@@ -208,6 +209,8 @@
         <button class="btn ghost" id="exportCsv">CSV書出</button>
         <button class="btn ghost" id="importCsv">CSV読込</button>
         <input type="file" id="csvFile" accept=".csv,text/csv" hidden>
+        <button class="btn ghost" id="importExcel">Excel読込(移行)</button>
+        <input type="file" id="excelFile" accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" hidden>
         <button class="btn ghost" id="exportBtn">JSON書出</button>
         <button class="btn ghost" id="importBtn">JSON読込</button>
         <input type="file" id="importFile" accept="application/json" hidden>
@@ -234,6 +237,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="config.js"></script>
 <script src="model.js"></script>
 <script src="cloud.js"></script>

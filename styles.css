@@ -341,3 +341,16 @@ svg .bar-exp{fill:var(--danger)}
   .ov-cols{gap:8px}
   .ov-col{min-width:100%}
 }
+
+
+/* Excel import v1.3 */
+.excel-mini{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0 10px}
+.excel-tablewrap{overflow:auto;max-height:260px;border:1px solid var(--line);border-radius:9px;margin-top:8px}
+.excel-issues{margin:8px 0 0;padding-left:18px;color:var(--warn);font-size:12px}
+#xl_preview details{background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:9px 10px;margin:8px 0}
+#xl_preview summary{cursor:pointer;font-weight:600}
+
+
+/* Excel import v1.3.1 */
+.alias-row{display:grid;grid-template-columns:1fr 1fr 150px;gap:8px;align-items:center;margin:6px 0}
+@media(max-width:760px){.alias-row{grid-template-columns:1fr}.alias-row .muted{font-size:12px}}
