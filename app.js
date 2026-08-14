@@ -194,19 +194,12 @@
 
   function nextEditIdFor(id) { const rows = filteredRows(); const i = rows.findIndex(t => t.id === id); return i >= 0 && i + 1 < rows.length ? rows[i + 1].id : null; }
 
-  function loadForSplit(id) {
-    const t = state.transactions.find(x => x.id === id); if (!t || t.kind !== 'expense') return toast('支出取引だけ分割できます');
-    loadForEdit(id);
-    const debs = ui.exp.debits || [];
-    if (debs.length === 1) { ui.exp.total = debs[0].amt || ''; ui.exp.debits.push({ path: '', amt: '', ratio: '' }); renderEntry(); toast('分割編集を開始しました。明細を追加して金額を分けてください'); }
-  }
-
   function loadForEdit(id) {
     const t = state.transactions.find(x => x.id === id); if (!t) return;
     if (t.kind === 'card_payment') { openCardPayEditModal(t); return; }
     const keepDate = ui._date; resetEntryState(); ui.editId = id; ui.editNextId = nextEditIdFor(id); ui._store = t.store; ui._branch = t.branch; ui._date = t.date; ui._memo = t.memo;
     const debits = t.lines.filter(l => l.amount > 0), credits = t.lines.filter(l => l.amount < 0);
-    if (t.kind === 'expense') { ui.type = 'expense'; ui.exp.debits = debits.filter(l => l.ref.startsWith('cat:')).map(l => ({ path: l.ref.slice(4), amt: String(l.amount), ratio: '' })); const accC = credits.filter(l => l.ref.startsWith('acc:')); ui.exp.credits = accC.map(l => ({ accId: l.ref.slice(4), amt: String(-l.amount) })); ui.exp.detail = accC.length > 1; if (!ui.exp.debits.length) ui.exp.debits = [{ path: '', amt: '', ratio: '' }]; }
+    if (t.kind === 'expense') { ui.type = 'expense'; ui.exp.debits = debits.filter(l => l.ref.startsWith('cat:')).map(l => ({ path: l.ref.slice(4), amt: String(l.amount), ratio: '' })); ui.exp.total = String(debits.filter(l => l.ref.startsWith('cat:')).reduce((sum, l) => sum + l.amount, 0)); const accC = credits.filter(l => l.ref.startsWith('acc:')); ui.exp.credits = accC.map(l => ({ accId: l.ref.slice(4), amt: String(-l.amount) })); ui.exp.detail = accC.length > 1; if (!ui.exp.debits.length) ui.exp.debits = [{ path: '', amt: '', ratio: '' }]; }
     else if (t.kind === 'income') { ui.type = 'income'; ui._accId = debits[0] ? debits[0].ref.slice(4) : ''; const cat = credits.find(l => l.ref.startsWith('cat:')); ui._catPath = cat ? cat.ref.slice(4) : ''; ui._amt = String((debits[0] || { amount: '' }).amount); }
     else if (t.kind === 'transfer') { ui.type = 'transfer'; ui._toId = debits[0] ? debits[0].ref.slice(4) : ''; ui._fromId = credits[0] ? credits[0].ref.slice(4) : ''; ui._amt = String((debits[0] || { amount: '' }).amount); }
     else if (t.kind === 'prepaid_amount') { ui.type = 'prepaid'; const cc = credits.find(l => l.ref.startsWith('acc:')); ui._prepaid = { toId: debits[0].ref.slice(4), fromId: cc ? cc.ref.slice(4) : '', face: debits[0].amount, paid: cc ? -cc.amount : debits[0].amount }; }
@@ -226,11 +219,10 @@
     if (!$('#fltCat').dataset.filled) { const tops = [...new Set(Object.keys(state.categories.expense).concat(Object.keys(state.categories.income)))]; $('#fltCat').innerHTML = `<option value="">すべて</option>` + tops.map(t => `<option>${t}</option>`).join(''); $('#fltCat').dataset.filled = '1'; }
     const rows = filteredRows(); const rowIds = new Set(rows.map(r => r.id)); selected.forEach(id => { if (!rowIds.has(id)) selected.delete(id); });
     const tbody = $('#txTable tbody');
-    tbody.innerHTML = rows.map(t => { const debit = t.lines.filter(l => l.amount > 0).map(l => refLabel(l.ref)).join(', '); const credit = t.lines.filter(l => l.amount < 0).map(l => refLabel(l.ref) + (l.qty ? `(${-l.qty}枚)` : '')).join(' + '); const amt = t.lines.filter(l => l.amount > 0).reduce((s, l) => s + l.amount, 0); const [cls, lab] = KIND_TAG[t.kind] || KIND_TAG.generic; return `<tr class="${selected.has(t.id) ? 'sel' : ''}" data-id="${t.id}"><td class="chk"><input type="checkbox" class="rowchk" ${selected.has(t.id) ? 'checked' : ''}></td><td>${t.date}</td><td><span class="tag ${cls}">${lab}</span></td><td>${esc(debit)}</td><td class="muted">${esc(credit)}</td><td>${esc(t.store)}${t.branch ? ' <span class="muted">/ ' + esc(t.branch) + '</span>' : ''}</td><td class="num">${yen(amt)}</td><td style="white-space:nowrap"><button class="btn ghost sm" data-edit="${t.id}">編集</button> ${t.kind === 'expense' ? `<button class="btn ghost sm" data-split="${t.id}">分割</button>` : ''} <button class="btn danger sm" data-del="${t.id}">削除</button></td></tr>`; }).join('') || `<tr><td colspan="8" class="muted" style="text-align:center; padding:20px">取引がありません</td></tr>`;
+    tbody.innerHTML = rows.map(t => { const debit = t.lines.filter(l => l.amount > 0).map(l => refLabel(l.ref)).join(', '); const credit = t.lines.filter(l => l.amount < 0).map(l => refLabel(l.ref) + (l.qty ? `(${-l.qty}枚)` : '')).join(' + '); const amt = t.lines.filter(l => l.amount > 0).reduce((s, l) => s + l.amount, 0); const [cls, lab] = KIND_TAG[t.kind] || KIND_TAG.generic; return `<tr class="${selected.has(t.id) ? 'sel' : ''}" data-id="${t.id}"><td class="chk"><input type="checkbox" class="rowchk" ${selected.has(t.id) ? 'checked' : ''}></td><td>${t.date}</td><td><span class="tag ${cls}">${lab}</span></td><td>${esc(debit)}</td><td class="muted">${esc(credit)}</td><td>${esc(t.store)}${t.branch ? ' <span class="muted">/ ' + esc(t.branch) + '</span>' : ''}</td><td class="num">${yen(amt)}</td><td style="white-space:nowrap"><button class="btn ghost sm" data-edit="${t.id}">編集</button> <button class="btn danger sm" data-del="${t.id}">削除</button></td></tr>`; }).join('') || `<tr><td colspan="8" class="muted" style="text-align:center; padding:20px">取引がありません</td></tr>`;
     $$('.rowchk', tbody).forEach(chk => chk.addEventListener('change', e => { const id = e.target.closest('tr').dataset.id; if (e.target.checked) selected.add(id); else selected.delete(id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulkBar(); syncChkAll(rows); }));
     $$('[data-del]', tbody).forEach(b => b.addEventListener('click', () => { if (!confirm('この取引を削除しますか？')) return; state.transactions = state.transactions.filter(t => t.id !== b.dataset.del); selected.delete(b.dataset.del); persist(); renderList(); renderAccounts(); renderReport(); renderCards(); renderDrill(); renderBudget(); toast('削除しました'); }));
     $$('[data-edit]', tbody).forEach(b => b.addEventListener('click', () => loadForEdit(b.dataset.edit)));
-    $$('[data-split]', tbody).forEach(b => b.addEventListener('click', () => loadForSplit(b.dataset.split)));
     syncChkAll(rows); renderBulkBar();
   }
   function gotoListWithKeyword(kw) { switchTab('list'); $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = kw; renderList(); toast(`「${kw}」で取引を検索`); }
@@ -293,26 +285,58 @@
 
   function accountFlowRows(accId) {
     const rows = [];
-    state.transactions.forEach(t => t.lines.forEach(l => { if (l.ref === 'acc:' + accId) rows.push({ date: t.date, id: t.id, kind: t.kind, store: t.store, branch: t.branch, memo: t.memo, amount: l.amount, qty: l.qty }); }));
+    state.transactions.forEach(t => t.lines.forEach(l => {
+      if (l.ref === 'acc:' + accId) rows.push({ date: t.date, id: t.id, kind: t.kind, store: t.store, branch: t.branch, memo: t.memo, amount: l.amount, qty: l.qty });
+    }));
     rows.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
     return rows;
   }
   function openAccountDetailModal(id) {
-    const a = accById(id); if (!a) return; const sub = M.ACCOUNT_SUBTYPES[a.subtype]; const rows = accountFlowRows(id); let running = a.opening || 0;
-    const body = rows.map(r => { running += sub.kind === 'asset' ? r.amount : -r.amount; const delta = sub.kind === 'asset' ? r.amount : -r.amount; return `<tr><td>${r.date}</td><td>${esc((KIND_TAG[r.kind] || KIND_TAG.generic)[1])}</td><td>${esc(r.store || '')}${r.branch ? ' <span class="muted">/ ' + esc(r.branch) + '</span>' : ''}</td><td class="num">${yen(delta)}</td><td class="num">${yen(running)}</td><td><button class="btn ghost sm" data-jumpedit="${r.id}">編集</button></td></tr>`; }).join('');
-    const bal = M.accountBalance(state, id); const neg = sub.kind === 'asset' && bal < 0 ? `<p class="excel-issues">⚠ 資産口座の残高がマイナスです。期首残高・口座統合・支払元の誤りを確認してください。</p>` : '';
+    const a = accById(id); if (!a) return;
+    const sub = M.ACCOUNT_SUBTYPES[a.subtype];
+    const rows = accountFlowRows(id);
+    let running = a.opening || 0;
+    const body = rows.map(r => {
+      const delta = sub.kind === 'asset' ? r.amount : -r.amount;
+      running += delta;
+      return `<tr><td>${r.date}</td><td>${esc((KIND_TAG[r.kind] || KIND_TAG.generic)[1])}</td><td>${esc(r.store || '')}${r.branch ? ' <span class="muted">/ ' + esc(r.branch) + '</span>' : ''}</td><td class="num">${yen(delta)}</td><td class="num">${yen(running)}</td><td><button class="btn ghost sm" data-jumpedit="${r.id}">編集</button></td></tr>`;
+    }).join('');
+    const bal = M.accountBalance(state, id);
+    const neg = sub.kind === 'asset' && bal < 0 ? `<p class="excel-issues">⚠ 資産口座の残高がマイナスです。期首残高・口座統合・支払元の誤りを確認してください。</p>` : '';
     $('#modal').innerHTML = `<h3>残高詳細：${esc(a.name)}</h3><div class="excel-mini"><span class="tag">種類 ${esc(sub.label)}</span><span class="tag">期首 ${yen(a.opening || 0)}</span><span class="tag">取引 ${rows.length}件</span><span class="tag">現在 ${yen(bal)}</span></div>${neg}<div class="excel-tablewrap"><table><thead><tr><th>日付</th><th>種別</th><th>店/メモ</th><th class="num">増減</th><th class="num">残高</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="6" class="muted">この口座を使う取引はありません</td></tr>'}</tbody></table></div><div class="actions"><button class="btn ghost" id="ad_close">閉じる</button></div>`;
-    $('#ad_close').addEventListener('click', closeModal); $$('[data-jumpedit]', $('#modal')).forEach(b => b.addEventListener('click', () => { const tid = b.dataset.jumpedit; closeModal(); loadForEdit(tid); })); showModal();
+    $('#ad_close').addEventListener('click', closeModal);
+    $$('[data-jumpedit]', $('#modal')).forEach(b => b.addEventListener('click', () => { const tid = b.dataset.jumpedit; closeModal(); loadForEdit(tid); }));
+    showModal();
   }
   function replaceAccountIdIn(obj, fromId, toId) {
-    if (!obj) return; if (Array.isArray(obj)) { obj.forEach(x => replaceAccountIdIn(x, fromId, toId)); return; }
-    if (typeof obj === 'object') Object.keys(obj).forEach(k => { const v = obj[k]; if (v === fromId) obj[k] = toId; else if (v === 'acc:' + fromId) obj[k] = 'acc:' + toId; else replaceAccountIdIn(v, fromId, toId); });
+    if (!obj) return;
+    if (Array.isArray(obj)) { obj.forEach(x => replaceAccountIdIn(x, fromId, toId)); return; }
+    if (typeof obj === 'object') Object.keys(obj).forEach(k => {
+      const v = obj[k];
+      if (v === fromId) obj[k] = toId;
+      else if (v === 'acc:' + fromId) obj[k] = 'acc:' + toId;
+      else replaceAccountIdIn(v, fromId, toId);
+    });
   }
   function openAccountMergeModal() {
     if (state.accounts.length < 2) return toast('統合するには口座が2つ以上必要です');
     const opts = state.accounts.map(a => `<option value="${a.id}">${esc(a.name)}（${M.ACCOUNT_SUBTYPES[a.subtype].label} / ${yen(M.accountBalance(state, a.id))}）</option>`).join('');
     $('#modal').innerHTML = `<h3>口座統合</h3><p class="hint">統合元口座を統合先口座へまとめます。過去取引・固定費・テンプレ・積立目標の参照も置換します。期首残高は統合先へ加算します。</p><div class="field"><label>統合元（消える口座）</label><select id="mg_from">${opts}</select></div><div class="field"><label>統合先（残す口座）</label><select id="mg_to">${opts}</select></div><div class="actions"><button class="btn ghost" id="mg_cancel">キャンセル</button><button class="btn danger" id="mg_ok">統合する</button></div>`;
-    $('#mg_cancel').addEventListener('click', closeModal); $('#mg_ok').addEventListener('click', () => { const fromId = $('#mg_from').value, toId = $('#mg_to').value; if (fromId === toId) return toast('同じ口座には統合できません'); const from = accById(fromId), to = accById(toId); if (!from || !to) return; if (!confirm(`${from.name} を ${to.name} へ統合します。元には戻せません。よろしいですか？`)) return; to.opening = (to.opening || 0) + (from.opening || 0); replaceAccountIdIn(state.transactions, fromId, toId); replaceAccountIdIn(state.recurring, fromId, toId); replaceAccountIdIn(state.templates, fromId, toId); replaceAccountIdIn(state.goals, fromId, toId); state.accounts = state.accounts.filter(a => a.id !== fromId); persist(); closeModal(); refreshDatalists(); renderAll(); toast('口座を統合しました ✓'); }); showModal();
+    $('#mg_cancel').addEventListener('click', closeModal);
+    $('#mg_ok').addEventListener('click', () => {
+      const fromId = $('#mg_from').value, toId = $('#mg_to').value;
+      if (fromId === toId) return toast('同じ口座には統合できません');
+      const from = accById(fromId), to = accById(toId); if (!from || !to) return;
+      if (!confirm(`${from.name} を ${to.name} へ統合します。元には戻せません。よろしいですか？`)) return;
+      to.opening = (to.opening || 0) + (from.opening || 0);
+      replaceAccountIdIn(state.transactions, fromId, toId);
+      replaceAccountIdIn(state.recurring, fromId, toId);
+      replaceAccountIdIn(state.templates, fromId, toId);
+      replaceAccountIdIn(state.goals, fromId, toId);
+      state.accounts = state.accounts.filter(a => a.id !== fromId);
+      persist(); closeModal(); refreshDatalists(); renderAll(); toast('口座を統合しました ✓');
+    });
+    showModal();
   }
 
   function renderAccounts() {
@@ -433,7 +457,7 @@
 
   
 
-/* ============ Excelインポート（移行専用 v1.3.3） ============ */
+/* ============ Excelインポート（移行専用 v1.3.4） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -457,7 +481,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.3）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.4）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -472,7 +496,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.3',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.4',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);
