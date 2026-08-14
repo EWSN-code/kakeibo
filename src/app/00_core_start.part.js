@@ -92,12 +92,39 @@
       input.addEventListener('keydown', e => { if (!pop.classList.contains('show')) return; if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); render(); } else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); } else if (e.key === 'Enter') { if (active >= 0) { e.preventDefault(); commit(items[active]); } } else if (e.key === 'Escape') close(); });
     });
   }
+  function addAmountPadButtons(root) {
+    const host = root || document;
+    if (host.id === 'modal') return;
+    $$('input[inputmode="decimal"], input[type="number"]', host).forEach(input => {
+      if (input.dataset.padReady || input.classList.contains('no-amount-pad')) return;
+      if (input.type === 'date' || input.type === 'month' || input.type === 'checkbox') return;
+      input.dataset.padReady = '1';
+      const btn = el('button', { class: 'btn ghost sm amount-pad-btn', type: 'button', title: '金額パッド' });
+      btn.textContent = '🧮';
+      btn.addEventListener('click', e => { e.preventDefault(); openAmountPad(input); });
+      input.insertAdjacentElement('afterend', btn);
+    });
+  }
+  function openAmountPad(target) {
+    const start = M.toHankaku(target.value || '');
+    $('#modal').innerHTML = `<h3>金額パッド</h3><div class="field"><label>式・金額</label><input id="kp_display" class="no-amount-pad" inputmode="decimal" value="${esc(start)}" placeholder="例: 980*1.08"></div><div class="amt-eval" id="kp_eval"></div><div class="keypad" id="kp_keys"></div><div class="actions"><button class="btn ghost" id="kp_cancel">キャンセル</button><button class="btn" id="kp_ok">入力する</button></div>`;
+    const disp = $('#kp_display'), ev = $('#kp_eval'), keys = $('#kp_keys');
+    const upd = () => { const raw = M.toHankaku(disp.value).trim(); if (!raw) { ev.textContent = ''; return; } const v = M.evalAmount(raw); ev.textContent = Number.isNaN(v) ? '⚠ 式が不正です' : '= ' + yen(v); };
+    const keyList = ['7','8','9','/','4','5','6','*','1','2','3','-','0','.','⌫','+','C','(',')','OK'];
+    keys.innerHTML = keyList.map(k => `<button class="btn ${k==='OK'?'':'ghost'} sm" data-k="${k}" type="button">${k}</button>`).join('');
+    $$('[data-k]', keys).forEach(b => b.addEventListener('click', () => { const k = b.dataset.k; if (k === 'OK') { $('#kp_ok').click(); return; } if (k === 'C') disp.value = ''; else if (k === '⌫') disp.value = disp.value.slice(0, -1); else disp.value += k; upd(); disp.focus(); }));
+    disp.addEventListener('input', upd); upd();
+    $('#kp_cancel').addEventListener('click', closeModal);
+    $('#kp_ok').addEventListener('click', () => { target.value = M.toHankaku(disp.value).trim(); target.dispatchEvent(new Event('input', { bubbles: true })); target.dispatchEvent(new Event('change', { bubbles: true })); closeModal(); });
+    showModal(); setTimeout(() => disp.focus(), 0);
+  }
   function decorateInputs(root) {
     attachHankakuAll(root);
     ['#f_store', '#pl_store', '#wi_store'].forEach(sel => { const i = $(sel, root || document); if (i) attachAC(i, storeCands); });
     ['#f_branch', '#pl_branch'].forEach(sel => { const i = $(sel, root || document); if (i) attachAC(i, branchCands); });
     const it = $('#pl_item', root || document); if (it) attachAC(it, itemCands);
     enhanceCatSelects(root);
+    addAmountPadButtons(root);
   }
 
   function accountsBy(fn) { return state.accounts.filter(fn); }

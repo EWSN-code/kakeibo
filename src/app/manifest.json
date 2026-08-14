@@ -1,5 +1,5 @@
 {
-  "version": "v1.3.6",
+  "version": "v1.3.7",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
   "parts": [
@@ -9,7 +9,7 @@
     },
     {
       "file": "10_entry.part.js",
-      "description": "Entry and edit form"
+      "description": "Entry and receipt/amount pad"
     },
     {
       "file": "20_list.part.js",
@@ -25,7 +25,7 @@
     },
     {
       "file": "50_report_analysis_period.part.js",
-      "description": "Report and v1.3.5 period analysis"
+      "description": "Report and period analysis"
     },
     {
       "file": "60_settings_recurring.part.js",
@@ -48,5 +48,5 @@
       "description": "Navigation, binding, boot"
     }
   ],
-  "bundle_sha256": "66bf361f51963d42ebb318f8b91705233de01b5cb6b2f14cc4ff8224c9a3b53e"
+  "bundle_sha256": "04b7b4254e17c65103fe098aabf2af3bb731dc63fa568232333379139a249339"
 }
