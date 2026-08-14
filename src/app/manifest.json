@@ -1,0 +1,52 @@
+{
+  "version": "v1.3.6",
+  "bundle": "app.js",
+  "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
+  "parts": [
+    {
+      "file": "00_core_start.part.js",
+      "description": "Core start / shared helpers"
+    },
+    {
+      "file": "10_entry.part.js",
+      "description": "Entry and edit form"
+    },
+    {
+      "file": "20_list.part.js",
+      "description": "Transaction list and bulk edits"
+    },
+    {
+      "file": "30_analysis_base.part.js",
+      "description": "Legacy analysis base"
+    },
+    {
+      "file": "40_accounts_cards.part.js",
+      "description": "Accounts and card cycles"
+    },
+    {
+      "file": "50_report_analysis_period.part.js",
+      "description": "Report and v1.3.5 period analysis"
+    },
+    {
+      "file": "60_settings_recurring.part.js",
+      "description": "Settings, recurring, categories, templates"
+    },
+    {
+      "file": "70_import_excel.part.js",
+      "description": "Excel migration importer"
+    },
+    {
+      "file": "80_budget_goals.part.js",
+      "description": "Budget and goals"
+    },
+    {
+      "file": "90_wishlist_price.part.js",
+      "description": "Wishlist and price comparison"
+    },
+    {
+      "file": "99_nav_boot.part.js",
+      "description": "Navigation, binding, boot"
+    }
+  ],
+  "bundle_sha256": "66bf361f51963d42ebb318f8b91705233de01b5cb6b2f14cc4ff8224c9a3b53e"
+}
