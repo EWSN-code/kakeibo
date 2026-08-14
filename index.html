@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<title>家計簿 v1.3.4 ― 複式簿記ハイブリッド</title>
+<title>家計簿 v1.3.5 ― 複式簿記ハイブリッド</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -36,7 +36,7 @@
 <div class="app">
   <header class="top">
     <button class="hamburger" id="hamburger" title="メニュー">≡</button>
-    <div class="brand">家計簿 <small>v1.3.4</small></div>
+    <div class="brand">家計簿 <small>v1.3.5</small></div>
     <div class="cur-tab" id="curTabName"></div>
     <div class="spacer"></div>
     <div class="account-bar" id="accountBar"></div>
@@ -100,7 +100,14 @@
   <section id="tab-drill" hidden>
     <div class="panel">
       <div class="section-title"><h3>分析</h3>
-        <select id="drillKind" style="width:auto"><option value="net">収支</option><option value="expense">費用</option><option value="income">収入</option></select></div>
+        <div class="row" style="gap:8px;align-items:end">
+          <div class="field" style="margin:0;width:auto"><label>表示</label><select id="drillKind" style="width:auto"><option value="net">収支</option><option value="expense">費用</option><option value="income">収入</option></select></div>
+          <div class="field" style="margin:0;width:auto"><label>期間</label><select id="drillRange" style="width:auto"><option value="month">表示月</option><option value="prev">前月</option><option value="last3">直近3か月</option><option value="last6">直近6か月</option><option value="last12">直近12か月</option><option value="all">全期間</option><option value="custom">任意</option></select></div>
+          <div id="drillCustom" class="row" style="gap:6px;display:none;align-items:end">
+            <div class="field" style="margin:0;width:auto"><label>From</label><input type="month" id="drillFrom" style="width:auto"></div>
+            <div class="field" style="margin:0;width:auto"><label>To</label><input type="month" id="drillTo" style="width:auto"></div>
+          </div>
+        </div></div>
       <div id="drillBody"></div>
     </div>
   </section>

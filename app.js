@@ -293,16 +293,9 @@
   }
   function openAccountDetailModal(id) {
     const a = accById(id); if (!a) return;
-    const sub = M.ACCOUNT_SUBTYPES[a.subtype];
-    const rows = accountFlowRows(id);
-    let running = a.opening || 0;
-    const body = rows.map(r => {
-      const delta = sub.kind === 'asset' ? r.amount : -r.amount;
-      running += delta;
-      return `<tr><td>${r.date}</td><td>${esc((KIND_TAG[r.kind] || KIND_TAG.generic)[1])}</td><td>${esc(r.store || '')}${r.branch ? ' <span class="muted">/ ' + esc(r.branch) + '</span>' : ''}</td><td class="num">${yen(delta)}</td><td class="num">${yen(running)}</td><td><button class="btn ghost sm" data-jumpedit="${r.id}">編集</button></td></tr>`;
-    }).join('');
-    const bal = M.accountBalance(state, id);
-    const neg = sub.kind === 'asset' && bal < 0 ? `<p class="excel-issues">⚠ 資産口座の残高がマイナスです。期首残高・口座統合・支払元の誤りを確認してください。</p>` : '';
+    const sub = M.ACCOUNT_SUBTYPES[a.subtype]; const rows = accountFlowRows(id); let running = a.opening || 0;
+    const body = rows.map(r => { const delta = sub.kind === 'asset' ? r.amount : -r.amount; running += delta; return `<tr><td>${r.date}</td><td>${esc((KIND_TAG[r.kind] || KIND_TAG.generic)[1])}</td><td>${esc(r.store || '')}${r.branch ? ' <span class="muted">/ ' + esc(r.branch) + '</span>' : ''}</td><td class="num">${yen(delta)}</td><td class="num">${yen(running)}</td><td><button class="btn ghost sm" data-jumpedit="${r.id}">編集</button></td></tr>`; }).join('');
+    const bal = M.accountBalance(state, id); const neg = sub.kind === 'asset' && bal < 0 ? `<p class="excel-issues">⚠ 資産口座の残高がマイナスです。期首残高・口座統合・支払元の誤りを確認してください。</p>` : '';
     $('#modal').innerHTML = `<h3>残高詳細：${esc(a.name)}</h3><div class="excel-mini"><span class="tag">種類 ${esc(sub.label)}</span><span class="tag">期首 ${yen(a.opening || 0)}</span><span class="tag">取引 ${rows.length}件</span><span class="tag">現在 ${yen(bal)}</span></div>${neg}<div class="excel-tablewrap"><table><thead><tr><th>日付</th><th>種別</th><th>店/メモ</th><th class="num">増減</th><th class="num">残高</th><th></th></tr></thead><tbody>${body || '<tr><td colspan="6" class="muted">この口座を使う取引はありません</td></tr>'}</tbody></table></div><div class="actions"><button class="btn ghost" id="ad_close">閉じる</button></div>`;
     $('#ad_close').addEventListener('click', closeModal);
     $$('[data-jumpedit]', $('#modal')).forEach(b => b.addEventListener('click', () => { const tid = b.dataset.jumpedit; closeModal(); loadForEdit(tid); }));
@@ -311,31 +304,14 @@
   function replaceAccountIdIn(obj, fromId, toId) {
     if (!obj) return;
     if (Array.isArray(obj)) { obj.forEach(x => replaceAccountIdIn(x, fromId, toId)); return; }
-    if (typeof obj === 'object') Object.keys(obj).forEach(k => {
-      const v = obj[k];
-      if (v === fromId) obj[k] = toId;
-      else if (v === 'acc:' + fromId) obj[k] = 'acc:' + toId;
-      else replaceAccountIdIn(v, fromId, toId);
-    });
+    if (typeof obj === 'object') Object.keys(obj).forEach(k => { const v = obj[k]; if (v === fromId) obj[k] = toId; else if (v === 'acc:' + fromId) obj[k] = 'acc:' + toId; else replaceAccountIdIn(v, fromId, toId); });
   }
   function openAccountMergeModal() {
     if (state.accounts.length < 2) return toast('統合するには口座が2つ以上必要です');
     const opts = state.accounts.map(a => `<option value="${a.id}">${esc(a.name)}（${M.ACCOUNT_SUBTYPES[a.subtype].label} / ${yen(M.accountBalance(state, a.id))}）</option>`).join('');
     $('#modal').innerHTML = `<h3>口座統合</h3><p class="hint">統合元口座を統合先口座へまとめます。過去取引・固定費・テンプレ・積立目標の参照も置換します。期首残高は統合先へ加算します。</p><div class="field"><label>統合元（消える口座）</label><select id="mg_from">${opts}</select></div><div class="field"><label>統合先（残す口座）</label><select id="mg_to">${opts}</select></div><div class="actions"><button class="btn ghost" id="mg_cancel">キャンセル</button><button class="btn danger" id="mg_ok">統合する</button></div>`;
     $('#mg_cancel').addEventListener('click', closeModal);
-    $('#mg_ok').addEventListener('click', () => {
-      const fromId = $('#mg_from').value, toId = $('#mg_to').value;
-      if (fromId === toId) return toast('同じ口座には統合できません');
-      const from = accById(fromId), to = accById(toId); if (!from || !to) return;
-      if (!confirm(`${from.name} を ${to.name} へ統合します。元には戻せません。よろしいですか？`)) return;
-      to.opening = (to.opening || 0) + (from.opening || 0);
-      replaceAccountIdIn(state.transactions, fromId, toId);
-      replaceAccountIdIn(state.recurring, fromId, toId);
-      replaceAccountIdIn(state.templates, fromId, toId);
-      replaceAccountIdIn(state.goals, fromId, toId);
-      state.accounts = state.accounts.filter(a => a.id !== fromId);
-      persist(); closeModal(); refreshDatalists(); renderAll(); toast('口座を統合しました ✓');
-    });
+    $('#mg_ok').addEventListener('click', () => { const fromId = $('#mg_from').value, toId = $('#mg_to').value; if (fromId === toId) return toast('同じ口座には統合できません'); const from = accById(fromId), to = accById(toId); if (!from || !to) return; if (!confirm(`${from.name} を ${to.name} へ統合します。元には戻せません。よろしいですか？`)) return; to.opening = (to.opening || 0) + (from.opening || 0); replaceAccountIdIn(state.transactions, fromId, toId); replaceAccountIdIn(state.recurring, fromId, toId); replaceAccountIdIn(state.templates, fromId, toId); replaceAccountIdIn(state.goals, fromId, toId); state.accounts = state.accounts.filter(a => a.id !== fromId); persist(); closeModal(); refreshDatalists(); renderAll(); toast('口座を統合しました ✓'); });
     showModal();
   }
 
@@ -383,6 +359,54 @@
   function payAllDue(cardId) { const bank = accountsBy(a => a.subtype === 'bank')[0] || accountsBy(a => a.subtype === 'cash')[0]; if (!bank) return toast('引落元の銀行/現金口座がありません'); const due = M.cardCycles(state, cardId).filter(c => c.due && !c.settled); if (!due.length) return toast('期限到来分はありません'); if (!confirm(`${due.length}件の請求を ${bank.name} からまとめて消込します。よろしいですか？`)) return; due.forEach(c => state.transactions.push(M.buildCardPayment({ date: c.payDate, cardAccId: cardId, credits: [{ accId: bank.id, amount: c.outstanding }], cycleKey: c.key, payDate: c.payDate }))); persist(); renderCards(); renderAccounts(); renderList(); toast(`${due.length}件を消込しました ✓`); }
 
   /* ============ レポート ============ */
+
+  /* ============ 分析 v1.3.5：期間選択 ============ */
+  function analysisPeriod() {
+    const base = currentYM();
+    const mode = ($('#drillRange') ? $('#drillRange').value : 'month') || 'month';
+    const prevYM = M.trailingMonths(base, 2)[0];
+    const lastDay = ym => { const [y,m] = ym.split('-').map(Number); return new Date(y, m, 0).getDate(); };
+    const make = (label, fromYM, toYM) => ({ label, fromYM, toYM, includes: d => (!fromYM || d.slice(0,7) >= fromYM) && (!toYM || d.slice(0,7) <= toYM), isSingleMonth: fromYM && toYM && fromYM === toYM, ym: fromYM === toYM ? fromYM : null });
+    if (mode === 'prev') return make('前月 ' + prevYM, prevYM, prevYM);
+    if (mode === 'last3') { const f = M.trailingMonths(base, 3)[0]; return make(`直近3か月 ${f}〜${base}`, f, base); }
+    if (mode === 'last6') { const f = M.trailingMonths(base, 6)[0]; return make(`直近6か月 ${f}〜${base}`, f, base); }
+    if (mode === 'last12') { const f = M.trailingMonths(base, 12)[0]; return make(`直近12か月 ${f}〜${base}`, f, base); }
+    if (mode === 'all') return make('全期間', null, null);
+    if (mode === 'custom') { const f = ($('#drillFrom')?.value || base), t = ($('#drillTo')?.value || base); return make(`任意 ${f}〜${t}`, f <= t ? f : t, f <= t ? t : f); }
+    return make('表示月 ' + base, base, base);
+  }
+  function periodTxs(p) { return state.transactions.filter(t => p.includes(t.date)); }
+  function periodSummary(p) { let income = 0, expense = 0; for (const t of periodTxs(p)) for (const ln of t.lines) { if (!ln.ref.startsWith('cat:')) continue; if (M.catKindOf(ln.ref) === 'income') income += -ln.amount; else expense += ln.amount; } return { income, expense, net: income - expense }; }
+  function periodTop(kind, p) { const map = {}; const pfx = kind === 'income' ? 'cat:inc>' : 'cat:exp>'; for (const t of periodTxs(p)) for (const ln of t.lines) { if (!ln.ref.startsWith(pfx)) continue; const val = kind === 'income' ? -ln.amount : ln.amount; if (val <= 0) continue; const top = ln.ref.slice(pfx.length).split('>')[0]; map[top] = (map[top] || 0) + val; } return map; }
+  function drillCategoryPeriod(kind, parts, p) { const pfx = kind === 'income' ? 'cat:inc>' : 'cat:exp>'; parts = parts || []; const depth = parts.length; const children = {}; let total = 0; for (const t of periodTxs(p)) for (const ln of t.lines) { if (!ln.ref.startsWith(pfx)) continue; const val = kind === 'income' ? -ln.amount : ln.amount; if (val <= 0) continue; const segs = ln.ref.slice(pfx.length).split('>'); let ok = true; for (let i = 0; i < depth; i++) if (segs[i] !== parts[i]) { ok = false; break; } if (!ok) continue; total += val; const seg = segs[depth] != null ? segs[depth] : '(なし)'; const c = children[seg] || (children[seg] = { total:0, count:0, deeper:false }); c.total += val; c.count += 1; if (segs.length > depth + 1) c.deeper = true; } return { children: Object.entries(children).map(([segment,c]) => ({ segment, path: parts.concat(segment), total: c.total, count: c.count, hasChildren: c.deeper })).sort((a,b)=>b.total-a.total), total, path: parts }; }
+  function transactionsForCategoryPeriod(kind, parts, p) { const pfx = kind === 'income' ? 'cat:inc>' : 'cat:exp>'; const out = []; for (const t of periodTxs(p)) for (const ln of t.lines) { if (!ln.ref.startsWith(pfx)) continue; const val = kind === 'income' ? -ln.amount : ln.amount; if (val <= 0) continue; const segs = ln.ref.slice(pfx.length).split('>'); let ok = true; for (let i = 0; i < parts.length; i++) if (segs[i] !== parts[i]) { ok = false; break; } if (!ok) continue; out.push({ date: t.date, store: t.store, branch: t.branch, memo: t.memo, amount: val, leaf: segs.join(' › '), txId: t.id }); } return out.sort((a,b)=>b.date.localeCompare(a.date)); }
+  function renderDrill() {
+    if ($('#tab-drill').hidden) return;
+    const p = analysisPeriod(); const kind = drill.kind; const body = $('#drillBody');
+    const sel = $('#drillKind'); if (sel && sel.value !== kind) sel.value = kind;
+    const custom = $('#drillCustom'); if (custom) custom.style.display = ($('#drillRange')?.value === 'custom') ? '' : 'none';
+    if (kind === 'net') renderOverview(body, p); else renderDrilldown(body, p, kind);
+  }
+  function renderOverview(body, p) {
+    const s = periodSummary(p); const txCount = periodTxs(p).length; const savings = s.income > 0 ? Math.round(s.net / s.income * 100) : 0;
+    const cards = [['収入', s.income, 'pos'], ['支出', s.expense, 'neg'], ['収支', s.net, s.net >= 0 ? 'pos' : 'neg'], ['取引数', txCount, '']];
+    const cardsHtml = `<div class="acc-sub" style="margin-bottom:8px">対象期間：${esc(p.label)}</div><div class="grid cols-4" style="margin-bottom:12px">` + cards.map(([k,v,c]) => `<div class="stat"><div class="k">${k}</div><div class="v ${c}">${k === '取引数' ? v + ' 件' : yen(v)}</div>${k === '収支' && s.income > 0 ? `<div class="sub">貯蓄率 ${savings}%</div>` : ''}</div>`).join('') + `</div>`;
+    const mx = Math.max(1, s.income, s.expense); const barsHtml = `<div class="ov-bars"><div class="ov-bar inc"><div class="cap"><span>収入</span><span>${yen(s.income)}</span></div><div class="track"><span style="width:${s.income / mx * 100}%"></span></div></div><div class="ov-bar exp"><div class="cap"><span>支出</span><span>${yen(s.expense)}</span></div><div class="track"><span style="width:${s.expense / mx * 100}%"></span></div></div></div>`;
+    const eb = periodTop('expense', p); const eEntries = Object.entries(eb).sort((a,b)=>b[1]-a[1]); const eTotal = eEntries.reduce((a,e)=>a+e[1],0); const eDonut = drawDonut(eEntries.slice(0,8), eTotal, true); const eList = eEntries.slice(0,6).map((e,i)=>`<div class="drill-row leaf"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${PALETTE[i % PALETTE.length]}"></span><span class="dn">${esc(e[0])}</span><span class="dpct">${M.pct(e[1], eTotal)}%</span><span class="dv">${yen(e[1])}</span></div>`).join('') || `<p class="muted">支出なし</p>`;
+    const ib = periodTop('income', p); const iEntries = Object.entries(ib).sort((a,b)=>b[1]-a[1]); const iTotal = iEntries.reduce((a,e)=>a+e[1],0); const iList = iEntries.slice(0,6).map((e,i)=>`<div class="drill-row leaf"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${PALETTE[(i + 3) % PALETTE.length]}"></span><span class="dn">${esc(e[0])}</span><span class="dpct">${M.pct(e[1], iTotal)}%</span><span class="dv">${yen(e[1])}</span></div>`).join('') || `<p class="muted">収入なし</p>`;
+    body.innerHTML = cardsHtml + barsHtml + `<div class="ov-cols"><div class="ov-col"><h4>費用の内訳 <span class="goto" data-goto="expense">費用を掘り下げる ›</span></h4><div class="chart-wrap" style="margin-bottom:8px">${eDonut.svg}<div style="flex:1;min-width:180px">${eList}</div></div></div><div class="ov-col"><h4>収入の内訳 <span class="goto" data-goto="income">収入を掘り下げる ›</span></h4>${iList}</div></div>`;
+    $$('[data-goto]', body).forEach(b => b.addEventListener('click', () => gotoDrill(b.dataset.goto)));
+  }
+  function renderDrilldown(body, p, kind) {
+    body.innerHTML = `<div class="acc-sub" style="margin-bottom:8px">対象期間：${esc(p.label)}</div><div class="crumb" id="drillCrumb"></div><div class="chart-wrap" style="margin-bottom:16px"><div id="drillDonut"></div><div class="donut-legend" id="drillList" style="min-width:280px"></div></div><div id="drillDetail"></div>`;
+    const crumbs = [`<span class="seg" data-depth="0">${kind === 'income' ? '収入' : '費用'} 全体</span>`]; drill.parts.forEach((part,i)=>{ crumbs.push(`<span class="sep">›</span><span class="seg" data-depth="${i+1}">${esc(part)}</span>`); }); $('#drillCrumb', body).innerHTML = crumbs.join(' '); $$('#drillCrumb .seg', body).forEach(seg => seg.addEventListener('click', () => { drill.parts = drill.parts.slice(0, +seg.dataset.depth); drill.leaf = null; renderDrill(); }));
+    const res = drillCategoryPeriod(kind, drill.parts, p); const entries = res.children.map(c => [c.segment, c.total]); $('#drillDonut', body).innerHTML = drawDonut(entries, res.total, true).svg; const max = Math.max(1, ...res.children.map(c => c.total));
+    $('#drillList', body).innerHTML = res.children.length ? res.children.map((c,i)=>`<div class="drill-row ${c.hasChildren ? '' : 'leaf'}" data-seg="${esc(c.segment)}" data-leaf="${c.hasChildren ? 0 : 1}"><div style="flex:1"><div style="display:flex;align-items:center;gap:10px"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${PALETTE[i % PALETTE.length]}"></span><span class="dn">${esc(c.segment)}</span><span class="dbar"><span class="bar"><span style="width:${c.total / max * 100}%"></span></span></span><span class="dpct">${M.pct(c.total, res.total)}%</span><span class="dv">${yen(c.total)}</span><span class="dc">${c.count}件</span><span class="drill-arrow">${c.hasChildren ? '▶' : ''}</span></div></div></div>`).join('') : `<p class="muted">この期間の${kind === 'income' ? '収入' : '支出'}はありません。</p>`;
+    $$('#drillList .drill-row', body).forEach(row => row.addEventListener('click', () => { const seg = row.dataset.seg; if (row.dataset.leaf === '0') { drill.parts = drill.parts.concat(seg); drill.leaf = null; } else drill.leaf = seg; renderDrill(); }));
+    const detailParts = drill.leaf ? drill.parts.concat(drill.leaf) : drill.parts; const txs = transactionsForCategoryPeriod(kind, detailParts, p); const title = detailParts.length ? detailParts.join(' › ') : '全明細';
+    $('#drillDetail', body).innerHTML = `<div class="section-title" style="margin-top:8px"><h3 style="margin:0">明細：${esc(title)}</h3><span class="pill">${txs.length}件 ・ 計 ${yen(txs.reduce((sum,x)=>sum+x.amount,0))}</span></div><div style="overflow:auto; max-height:40vh"><table><thead><tr><th>日付</th><th>カテゴリ</th><th>店名</th><th>メモ</th><th class="num">金額</th></tr></thead><tbody>${txs.map(x=>`<tr><td>${x.date}</td><td>${esc(x.leaf)}</td><td>${esc(x.store)}${x.branch ? ' <span class="muted">/ ' + esc(x.branch) + '</span>' : ''}</td><td class="muted">${esc(x.memo)}</td><td class="num">${yen(x.amount)}</td></tr>`).join('') || `<tr><td colspan="5" class="muted" style="text-align:center;padding:16px">明細なし</td></tr>`}</tbody></table></div>`;
+  }
+
   function renderReport() { const ym = currentYM(); const s = M.monthlySummary(state, ym); const savings = s.income > 0 ? Math.round(s.net / s.income * 100) : 0; const cards = [['収入', yen(s.income), 'pos'], ['支出', yen(s.expense), 'neg'], ['収支', yen(s.net), s.net >= 0 ? 'pos' : 'neg'], ['貯蓄率', savings + ' %', savings >= 0 ? 'pos' : 'neg']]; $('#reportCards').innerHTML = cards.map(([k, v, c]) => `<div class="stat"><div class="k">${k}（${ym}）</div><div class="v ${c}">${v}</div></div>`).join(''); const months = M.trailingMonths(ym, 6).map(m => ({ ym: m, ...M.monthlySummary(state, m) })); $('#trendChart').innerHTML = drawTrend(months); const bd = M.expenseByTopCategory(state, ym); const entries = Object.entries(bd).sort((a, b) => b[1] - a[1]); const dc = drawDonut(entries, entries.reduce((s, e) => s + e[1], 0), true); $('#donutChart').innerHTML = dc.svg; $('#donutLegend').innerHTML = dc.legend || `<p class="muted">この月の支出はありません。</p>`; }
   function drawTrend(months) { const W = 640, H = 220, pad = 34, bw = 14, gap = 6; const max = Math.max(1, ...months.map(m => Math.max(m.income, m.expense))); const innerH = H - pad - 20, step = (W - pad) / months.length; let bars = '', axis = '', grid = ''; for (let g = 0; g <= 2; g++) { const y = H - 20 - (innerH * g / 2); grid += `<line x1="${pad}" y1="${y}" x2="${W}" y2="${y}" stroke="var(--line)" stroke-dasharray="3 3"/><text class="trend-v" x="2" y="${y + 3}">${yen(max * g / 2)}</text>`; } months.forEach((m, i) => { const x = pad + i * step + step / 2; const ih = m.income / max * innerH, eh = m.expense / max * innerH; bars += `<rect class="bar-inc" x="${x - bw - gap / 2}" y="${H - 20 - ih}" width="${bw}" height="${ih}" rx="2"><title>${m.ym} 収入 ${yen(m.income)}</title></rect><rect class="bar-exp" x="${x + gap / 2}" y="${H - 20 - eh}" width="${bw}" height="${eh}" rx="2"><title>${m.ym} 支出 ${yen(m.expense)}</title></rect>`; axis += `<text class="trend-x" x="${x}" y="${H - 6}" text-anchor="middle">${m.ym.slice(5)}月</text>`; }); return `<svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}">${grid}${bars}${axis}<g transform="translate(${pad},14)"><rect class="bar-inc" width="10" height="10" rx="2"/><text class="trend-x" x="16" y="9">収入</text><rect class="bar-exp" x="58" width="10" height="10" rx="2"/><text class="trend-x" x="74" y="9">支出</text></g></svg>`; }
   function drawDonut(entries, total, showPct) { if (!entries.length || !total) return { svg: `<svg viewBox="0 0 180 180" width="180" height="180"><circle cx="90" cy="90" r="60" fill="none" stroke="var(--line)" stroke-width="24"/></svg>`, legend: '' }; const r = 60, cx = 90, cy = 90, C = 2 * Math.PI * r; let off = 0, circles = '', labels = '', legend = ''; entries.forEach((e, i) => { const frac = e[1] / total, len = frac * C, col = PALETTE[i % PALETTE.length]; const p = Math.round(frac * 100); circles += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="none" stroke="${col}" stroke-width="24" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}" transform="rotate(-90 ${cx} ${cy})"><title>${esc(e[0])} ${yen(e[1])} (${p}%)</title></circle>`; if (showPct && p >= 8) { const mid = off + len / 2; const ang = (mid / C) * 2 * Math.PI - Math.PI / 2; const lx = cx + Math.cos(ang) * r, ly = cy + Math.sin(ang) * r; labels += `<text class="donut-pct" x="${lx}" y="${ly + 3}" text-anchor="middle">${p}%</text>`; } off += len; legend += `<div class="li"><span class="sw" style="background:${col}"></span><span class="nm">${esc(e[0])}</span><span class="vl">${yen(e[1])} ・ ${p}%</span></div>`; }); return { svg: `<svg viewBox="0 0 180 180" width="180" height="180">${circles}${labels}<text x="90" y="86" text-anchor="middle" fill="var(--muted)" font-size="11">合計</text><text x="90" y="104" text-anchor="middle" fill="var(--text)" font-size="15" font-weight="700">${yen(total)}</text></svg>`, legend }; }
@@ -457,7 +481,7 @@
 
   
 
-/* ============ Excelインポート（移行専用 v1.3.4） ============ */
+/* ============ Excelインポート（移行専用 v1.3.5） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -481,7 +505,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.4）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.5）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -496,7 +520,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.4',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.5',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);
@@ -684,6 +708,7 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     $('#fltClear').addEventListener('click', () => { $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; if($('#fltSort')) $('#fltSort').value = 'date_desc'; renderList(); });
     $('#chkAll').addEventListener('change', e => { const rows = filteredRows(); if (e.target.checked) rows.forEach(r => selected.add(r.id)); else rows.forEach(r => selected.delete(r.id)); renderList(); });
     $('#drillKind').addEventListener('change', e => { drill.kind = e.target.value; drill.parts = []; drill.leaf = null; renderDrill(); });
+    ['#drillRange', '#drillFrom', '#drillTo'].forEach(sel => { const el = $(sel); if (el) el.addEventListener('input', () => { drill.parts = []; drill.leaf = null; renderDrill(); }); });
     $('#addAcc').addEventListener('click', () => openAccountModal(null)); const mergeAcc = $('#mergeAcc'); if (mergeAcc) mergeAcc.addEventListener('click', openAccountMergeModal); $('#addRec').addEventListener('click', () => openRecModal(null));
     $('#addBudget').addEventListener('click', () => openBudgetModal(null)); $('#addGoal').addEventListener('click', () => openGoalModal(null));
     $('#addTpl').addEventListener('click', () => openTplModal(null));
