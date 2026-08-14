@@ -19,18 +19,8 @@
     showModal();
   }
   let settingsSection = 'rec';
-  function renderSettingsTabs() {
-    const host = $('#settingsSubtabs'); if (!host) return;
-    $$('#settingsSubtabs button').forEach(b => b.classList.toggle('active', b.dataset.setting === settingsSection));
-    $$('[data-setting-panel]', $('#tab-settings')).forEach(p => p.hidden = p.dataset.settingPanel !== settingsSection);
-  }
-  function renderThemeSettings() {
-    const preset = $('#themePreset'), accent = $('#themeAccent'), preview = $('#themePreview'); if (!preset || !accent) return;
-    const t = loadTheme(); preset.value = t.preset || 'midnight'; accent.value = t.accent || '#4f9dff';
-    const redraw = () => { const nt = { preset: preset.value, accent: accent.value }; saveTheme(nt); applyTheme(nt); if (preview) preview.innerHTML = `<div class="stat"><div class="k">Preview</div><div class="v pos">${THEME_PRESETS[preset.value]?.label || preset.value}</div><div class="sub">Accent ${accent.value}</div></div><button class="btn sm">ボタン</button><span class="tag">タグ</span>`; };
-    preset.oninput = redraw; accent.oninput = redraw; const reset = $('#themeReset'); if (reset) reset.onclick = () => { saveTheme({ preset: 'midnight', accent: '#4f9dff' }); applyTheme(); renderThemeSettings(); };
-    redraw();
-  }
+  function renderSettingsTabs() { const host = $('#settingsSubtabs'); if (!host) return; $$('#settingsSubtabs button').forEach(b => b.classList.toggle('active', b.dataset.setting === settingsSection)); $$('[data-setting-panel]', $('#tab-settings')).forEach(p => p.hidden = p.dataset.settingPanel !== settingsSection); }
+  function renderThemeSettings() { const preset = $('#themePreset'), accent = $('#themeAccent'), preview = $('#themePreview'); if (!preset || !accent) return; const t = loadTheme(); preset.value = t.preset || 'midnight'; accent.value = t.accent || '#4f9dff'; const redraw = () => { const nt = { preset: preset.value, accent: accent.value }; saveTheme(nt); applyTheme(nt); if (preview) preview.innerHTML = `<div class="stat"><div class="k">Preview</div><div class="v pos">${THEME_PRESETS[preset.value]?.label || preset.value}</div><div class="sub">Accent ${accent.value}</div></div><button class="btn sm">ボタン</button><span class="tag">タグ</span>`; }; preset.oninput = redraw; accent.oninput = redraw; const reset = $('#themeReset'); if (reset) reset.onclick = () => { saveTheme({ preset: 'midnight', accent: '#4f9dff' }); applyTheme(); renderThemeSettings(); }; redraw(); }
   function renderSettings() { renderSettingsTabs(); renderThemeSettings(); renderCatTree(); renderRecList(); renderTplList(); renderReadings(); $('#dl-top').innerHTML = Object.keys(state.categories.expense).map(s => `<option value="${esc(s)}">`).join(''); }
   function renderCatTree() { const kind = $('#catKind').value, root = state.categories[kind]; let html = ''; for (const top of Object.keys(root)) { html += `<div style="margin-bottom:6px"><b>${esc(top)}</b> `; const parts = []; for (const mid of Object.keys(root[top] || {})) { const leaves = root[top][mid] || []; parts.push(`<span class="tag">${esc(mid)}${leaves.length ? '：' + leaves.map(esc).join('・') : ''}</span>`); } html += parts.join(' ') + `</div>`; } $('#catTree').innerHTML = html || '<p class="muted">カテゴリなし</p>'; }
 

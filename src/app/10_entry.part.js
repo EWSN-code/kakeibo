@@ -39,45 +39,43 @@
   function bindFormulaEval(inputSel, evalSel) { const inp = $(inputSel), out = $(evalSel); if (!inp || !out) return; const upd = () => { const raw = M.toHankaku(inp.value).trim(); if (!raw || /^\d+$/.test(raw)) { out.textContent = ''; return; } const v = M.evalAmount(inp.value); out.textContent = Number.isNaN(v) ? '⚠ 式が不正です' : '= ' + yen(v); }; inp.addEventListener('input', upd); upd(); }
   function renderDebits() { const area = $('#debitArea'); if (!area) return; const rm = ui.exp.ratioMode; area.innerHTML = ui.exp.debits.map((d, i) => `<div class="line-row" data-i="${i}"><div class="field cat"><select class="d_cat catsel">${categoryOptions('expense', d.path)}</select></div>${rm ? `<div class="field ratio"><input class="d_ratio" inputmode="decimal" value="${esc(d.ratio || '')}" placeholder="比" title="割合(重み)"></div>` : ''}<div class="field amt"><input class="d_amt" inputmode="decimal" value="${esc(d.amt)}" placeholder="0 (式可)"><div class="amt-eval d_eval"></div></div><div><button class="btn ghost sm d_del">✕</button></div></div>`).join(''); $$('.line-row', area).forEach(row => { const i = +row.dataset.i; const cat = row.querySelector('.d_cat'), amt = row.querySelector('.d_amt'), ev = row.querySelector('.d_eval'); if (ui.exp.debits[i].path) cat.value = ui.exp.debits[i].path; cat.addEventListener('change', () => ui.exp.debits[i].path = cat.value); amt.addEventListener('input', () => { ui.exp.debits[i].amt = amt.value; const raw = M.toHankaku(amt.value).trim(); ev.textContent = (!raw || /^\d+$/.test(raw)) ? '' : (Number.isNaN(M.evalAmount(amt.value)) ? '⚠ 式が不正' : '= ' + yen(M.evalAmount(amt.value))); recalcExpense(); }); const rat = row.querySelector('.d_ratio'); if (rat) rat.addEventListener('input', () => ui.exp.debits[i].ratio = rat.value); row.querySelector('.d_del').addEventListener('click', () => { syncExpFromDOM(); ui.exp.debits.splice(i, 1); if (!ui.exp.debits.length) ui.exp.debits.push({ path: '', amt: '', ratio: '' }); renderDebits(); recalcExpense(); }); }); attachHankakuAll(area); enhanceCatSelects(area); }
 
+
   function openReceiptInputModal() {
     syncExpFromDOM();
     let rows = Array.from({ length: 5 }, () => ({ amount: '', cat: '', sel: true }));
     let pasteText = '';
+    let ignoreTotals = true;
+    let parseInfo = '';
     const isBlankRow = r => !(String(r.amount || '').trim()) && !(String(r.cat || '').trim());
-    const parseLines = text => String(text || '').split(/\n+/).map(line => {
-      const m = M.toHankaku(line).replace(/[,，]/g, '').match(/(-?\d+(?:\.\d+)?)(?!.*\d)/);
-      return m ? { amount: m[1], cat: '', sel: true } : null;
-    }).filter(Boolean);
-    const total = () => rows.reduce((sum, r) => { const v = M.evalAmount(r.amount); return sum + (Number.isNaN(v) ? 0 : v); }, 0);
-    const syncRows = () => {
-      $$('#ri_rows tr[data-i]').forEach(tr => { const i = +tr.dataset.i; rows[i].sel = tr.querySelector('.ri_sel').checked; rows[i].amount = tr.querySelector('.ri_amt').value; rows[i].cat = tr.querySelector('.ri_cat').value; });
-      const pt = $('#ri_paste'); if (pt) pasteText = pt.value;
+    const shouldSkipReceiptLine = line => {
+      const raw = String(line || '').trim();
+      if (!ignoreTotals || !raw) return false;
+      if (/\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2}/.test(raw)) return true;
+      if (/\d{1,2}:\d{2}/.test(raw) && !/[¥￥円]/.test(raw)) return true;
+      return /(合計|小計|税込|税額|消費税|対象計|内税|外税|お預|預り|お釣|釣銭|現計|現金|クレジット|カード|電子マネー|ポイント|残高|領収|レシート|店番|登録番号|TEL|電話|担当|釣)/.test(raw);
     };
+    const extractAmount = line => {
+      const raw = M.toHankaku(String(line || '')).replace(/[，,]/g, '');
+      if (shouldSkipReceiptLine(raw)) return null;
+      const ms = [...raw.matchAll(/[¥￥]?\s*([+-]?\d+(?:\.\d+)?)(?:\s*円)?/g)].map(m => m[1]);
+      if (!ms.length) return null;
+      const n = ms[ms.length - 1];
+      if (/^(20\d{2}|19\d{2})$/.test(n) && !/[¥￥円]/.test(raw)) return null;
+      return n;
+    };
+    const parseLines = text => { const lines = String(text || '').split(/\n+/); const out=[]; let skipped=0; lines.forEach(line=>{ const amount=extractAmount(line); if(amount) out.push({amount,cat:'',sel:true}); else if(line.trim()) skipped++; }); parseInfo = out.length ? `${out.length}行を読み取りました${skipped ? `（無視 ${skipped}行）` : ''}` : (skipped ? `${skipped}行を確認しましたが金額候補はありません` : ''); return out; };
+    const total = () => rows.reduce((sum, r) => { const v = M.evalAmount(r.amount); return sum + (Number.isNaN(v) ? 0 : v); }, 0);
+    const syncRows = () => { $$('#ri_rows tr[data-i]').forEach(tr => { const i = +tr.dataset.i; rows[i].sel = tr.querySelector('.ri_sel').checked; rows[i].amount = tr.querySelector('.ri_amt').value; rows[i].cat = tr.querySelector('.ri_cat').value; }); const pt = $('#ri_paste'); if (pt) pasteText = pt.value; const ig = $('#ri_ignoreTotals'); if (ig) ignoreTotals = ig.checked; };
     const draw = () => {
-      $('#modal').innerHTML = `<h3>レシート金額入力</h3><p class="hint">品目名なしで金額だけを入力します。行を選択してカテゴリを一括設定し、最後にカテゴリごとに集約して明細へ反映します。</p><div class="field"><label>金額を貼り付け（1行1金額。OCRテキストでも末尾の金額を拾います）</label><textarea id="ri_paste" rows="4" placeholder="238\n298\n398">${esc(pasteText)}</textarea></div><div class="row" style="gap:6px"><button class="btn ghost sm" id="ri_parse">貼り付けから行追加</button><button class="btn ghost sm" id="ri_add">＋行追加</button><button class="btn ghost sm" id="ri_selectAll">全選択</button><button class="btn ghost sm" id="ri_remove">選択行を削除</button></div><div class="row" style="gap:6px;margin-top:8px"><div class="field" style="flex:2;margin:0"><label>選択行にカテゴリ設定</label><select id="ri_bulk" class="catsel"><option value="">カテゴリを選択</option>${categoryOptions('expense')}</select></div><button class="btn ghost sm" id="ri_applyCat" style="align-self:end">選択行へ設定</button></div><div class="excel-tablewrap" style="margin-top:10px"><table><thead><tr><th style="width:42px">選択</th><th>金額</th><th>カテゴリ</th></tr></thead><tbody id="ri_rows">${rows.map((r,i)=>`<tr data-i="${i}"><td><input class="ri_sel" type="checkbox" ${r.sel?'checked':''} style="width:auto"></td><td><input class="ri_amt no-amount-pad" inputmode="decimal" value="${esc(r.amount)}" placeholder="0"></td><td><select class="ri_cat catsel"><option value="">未分類</option>${categoryOptions('expense', r.cat)}</select></td></tr>`).join('')}</tbody></table></div><div class="totline"><span>入力合計</span><span class="v" id="ri_total">${yen(total())}</span></div><div class="balance-warn" id="ri_warn"></div><div class="actions"><button class="btn ghost" id="ri_cancel">キャンセル</button><button class="btn" id="ri_commit">明細へ反映</button></div>`;
-      enhanceCatSelects($('#modal'));
-      const upd = () => { syncRows(); $('#ri_total').textContent = yen(total()); };
-      $$('#ri_rows input, #ri_rows select').forEach(el => el.addEventListener('input', upd));
-      $('#ri_paste').addEventListener('input', () => pasteText = $('#ri_paste').value);
+      $('#modal').innerHTML = `<h3>OSコピペ / レシート金額入力</h3><p class="hint">iPhoneのOCRやメモアプリから貼り付けたテキストから金額だけを抽出します。品目名は扱わず、選択行にカテゴリを一括設定して明細へ反映します。</p><div class="field"><label>貼り付けテキスト</label><textarea id="ri_paste" rows="5" placeholder="牛乳 238\n卵 298\n洗剤 398">${esc(pasteText)}</textarea></div><label class="hint" style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="ri_ignoreTotals" ${ignoreTotals ? 'checked' : ''} style="width:auto"> 合計/小計/税/支払/お釣りっぽい行を無視</label><div class="row" style="gap:6px"><button class="btn ghost sm" id="ri_clip">クリップボード読込</button><button class="btn ghost sm" id="ri_parseReplace">貼り付けで置換</button><button class="btn ghost sm" id="ri_parse">貼り付けから行追加</button><button class="btn ghost sm" id="ri_add">＋行追加</button><button class="btn ghost sm" id="ri_selectAll">全選択</button><button class="btn ghost sm" id="ri_remove">選択行を削除</button></div><div class="acc-sub" id="ri_parseInfo" style="margin-top:6px">${esc(parseInfo)}</div><div class="row" style="gap:6px;margin-top:8px"><div class="field" style="flex:2;margin:0"><label>選択行にカテゴリ設定</label><select id="ri_bulk" class="catsel"><option value="">カテゴリを選択</option>${categoryOptions('expense')}</select></div><button class="btn ghost sm" id="ri_applyCat" style="align-self:end">選択行へ設定</button></div><div class="excel-tablewrap" style="margin-top:10px"><table><thead><tr><th style="width:42px">選択</th><th>金額</th><th>カテゴリ</th></tr></thead><tbody id="ri_rows">${rows.map((r,i)=>`<tr data-i="${i}"><td><input class="ri_sel" type="checkbox" ${r.sel?'checked':''} style="width:auto"></td><td><input class="ri_amt no-amount-pad" inputmode="decimal" value="${esc(r.amount)}" placeholder="0"></td><td><select class="ri_cat catsel"><option value="">未分類</option>${categoryOptions('expense', r.cat)}</select></td></tr>`).join('')}</tbody></table></div><div class="totline"><span>入力合計</span><span class="v" id="ri_total">${yen(total())}</span></div><div class="balance-warn" id="ri_warn"></div><div class="actions"><button class="btn ghost" id="ri_cancel">キャンセル</button><button class="btn" id="ri_commit">明細へ反映</button></div>`;
+      enhanceCatSelects($('#modal')); const upd = () => { syncRows(); $('#ri_total').textContent = yen(total()); };
+      $$('#ri_rows input, #ri_rows select').forEach(el => el.addEventListener('input', upd)); $('#ri_paste').addEventListener('input', () => pasteText = $('#ri_paste').value); $('#ri_ignoreTotals').addEventListener('change', syncRows);
+      $('#ri_clip').addEventListener('click', async () => { try { if (!navigator.clipboard || !navigator.clipboard.readText) return toast('この環境ではクリップボード読込に対応していません'); pasteText = await navigator.clipboard.readText(); draw(); } catch(e) { toast('クリップボードを読めませんでした'); } });
+      $('#ri_parseReplace').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = parsed; pasteText = ''; draw(); });
       $('#ri_parse').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = rows.filter(r => !isBlankRow(r)).concat(parsed); pasteText = ''; draw(); });
-      $('#ri_add').addEventListener('click', () => { syncRows(); rows.push({ amount: '', cat: '', sel: true }); draw(); });
-      $('#ri_selectAll').addEventListener('click', () => { syncRows(); const all = rows.some(r => !r.sel); rows.forEach(r => r.sel = all); draw(); });
-      $('#ri_remove').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !r.sel); if (!rows.length) rows.push({ amount: '', cat: '', sel: true }); draw(); });
-      $('#ri_applyCat').addEventListener('click', () => { syncRows(); const cat = $('#ri_bulk').value; if (!cat) return toast('カテゴリを選んでください'); rows.forEach(r => { if (r.sel) r.cat = cat; }); draw(); });
-      $('#ri_cancel').addEventListener('click', closeModal);
-      $('#ri_commit').addEventListener('click', () => {
-        syncRows();
-        rows = rows.filter(r => !isBlankRow(r));
-        const valid = rows.map(r => ({ ...r, value: M.evalAmount(r.amount) })).filter(r => r.amount !== '' && !Number.isNaN(r.value) && r.value);
-        if (!valid.length) return toast('金額を1行以上入力してください');
-        const uncategorized = valid.filter(r => !r.cat);
-        if (uncategorized.length) { $('#ri_warn').textContent = `未分類の金額行が ${uncategorized.length} 件あります。カテゴリを設定してください。`; return; }
-        const agg = new Map();
-        valid.forEach(r => agg.set(r.cat, (agg.get(r.cat) || 0) + r.value));
-        ui.exp.debits = [...agg.entries()].map(([path, amount]) => ({ path, amt: String(Math.round(amount)), ratio: '' }));
-        ui.exp.total = String(Math.round(valid.reduce((sum, r) => sum + r.value, 0)));
-        closeModal(); renderEntry(); toast(`${valid.length}行を${ui.exp.debits.length}カテゴリに集約しました ✓`);
-      });
+      $('#ri_add').addEventListener('click', () => { syncRows(); rows.push({ amount: '', cat: '', sel: true }); draw(); }); $('#ri_selectAll').addEventListener('click', () => { syncRows(); const all = rows.some(r => !r.sel); rows.forEach(r => r.sel = all); draw(); }); $('#ri_remove').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !r.sel); if (!rows.length) rows.push({ amount: '', cat: '', sel: true }); draw(); });
+      $('#ri_applyCat').addEventListener('click', () => { syncRows(); const cat = $('#ri_bulk').value; if (!cat) return toast('カテゴリを選んでください'); rows.forEach(r => { if (r.sel) r.cat = cat; }); draw(); }); $('#ri_cancel').addEventListener('click', closeModal);
+      $('#ri_commit').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !isBlankRow(r)); const valid = rows.map(r => ({ ...r, value: M.evalAmount(r.amount) })).filter(r => r.amount !== '' && !Number.isNaN(r.value) && r.value); if (!valid.length) return toast('金額を1行以上入力してください'); const uncategorized = valid.filter(r => !r.cat); if (uncategorized.length) { $('#ri_warn').textContent = `未分類の金額行が ${uncategorized.length} 件あります。カテゴリを設定してください。`; return; } const agg = new Map(); valid.forEach(r => agg.set(r.cat, (agg.get(r.cat) || 0) + r.value)); ui.exp.debits = [...agg.entries()].map(([path, amount]) => ({ path, amt: String(Math.round(amount)), ratio: '' })); ui.exp.total = String(Math.round(valid.reduce((sum, r) => sum + r.value, 0))); closeModal(); renderEntry(); toast(`${valid.length}行を${ui.exp.debits.length}カテゴリに集約しました ✓`); });
     };
     draw(); showModal();
   }

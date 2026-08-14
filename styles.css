@@ -365,8 +365,11 @@ svg .bar-exp{fill:var(--danger)}
 @media(max-width:760px){.amount-pad-btn{margin-top:6px}.keypad{grid-template-columns:repeat(4,1fr)}#ri_rows select{min-width:150px}}
 
 
-/* v1.4 settings subtabs and theme */
+/* v1.5 settings subtabs and theme */
 .settings-subtabs{display:flex;gap:6px;overflow:auto;margin:0 0 12px;padding-bottom:4px}
 .settings-subtabs button{background:var(--panel2);border:1px solid var(--line);color:var(--muted);border-radius:999px;padding:8px 12px;white-space:nowrap;cursor:pointer}
 .settings-subtabs button.active{background:color-mix(in srgb,var(--accent) 24%,var(--panel2));border-color:var(--accent);color:var(--text);font-weight:700}
 .theme-preview{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px;padding:12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--panel2)}
+
+/* v1.5 OS clipboard receipt polish */
+.os-clipboard-note{color:var(--muted);font-size:12px}
