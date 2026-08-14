@@ -184,6 +184,7 @@
     syncExpFromDOM();
     let rows = Array.from({ length: 5 }, () => ({ amount: '', cat: '', sel: true }));
     let pasteText = '';
+    const isBlankRow = r => !(String(r.amount || '').trim()) && !(String(r.cat || '').trim());
     const parseLines = text => String(text || '').split(/\n+/).map(line => {
       const m = M.toHankaku(line).replace(/[,，]/g, '').match(/(-?\d+(?:\.\d+)?)(?!.*\d)/);
       return m ? { amount: m[1], cat: '', sel: true } : null;
@@ -199,7 +200,7 @@
       const upd = () => { syncRows(); $('#ri_total').textContent = yen(total()); };
       $$('#ri_rows input, #ri_rows select').forEach(el => el.addEventListener('input', upd));
       $('#ri_paste').addEventListener('input', () => pasteText = $('#ri_paste').value);
-      $('#ri_parse').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = rows.concat(parsed); pasteText = ''; draw(); });
+      $('#ri_parse').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = rows.filter(r => !isBlankRow(r)).concat(parsed); pasteText = ''; draw(); });
       $('#ri_add').addEventListener('click', () => { syncRows(); rows.push({ amount: '', cat: '', sel: true }); draw(); });
       $('#ri_selectAll').addEventListener('click', () => { syncRows(); const all = rows.some(r => !r.sel); rows.forEach(r => r.sel = all); draw(); });
       $('#ri_remove').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !r.sel); if (!rows.length) rows.push({ amount: '', cat: '', sel: true }); draw(); });
@@ -207,6 +208,7 @@
       $('#ri_cancel').addEventListener('click', closeModal);
       $('#ri_commit').addEventListener('click', () => {
         syncRows();
+        rows = rows.filter(r => !isBlankRow(r));
         const valid = rows.map(r => ({ ...r, value: M.evalAmount(r.amount) })).filter(r => r.amount !== '' && !Number.isNaN(r.value) && r.value);
         if (!valid.length) return toast('金額を1行以上入力してください');
         const uncategorized = valid.filter(r => !r.cat);
@@ -429,7 +431,7 @@
 
   /* ============ レポート ============ */
 
-  /* ============ 分析 v1.3.7：期間選択 ============ */
+  /* ============ 分析 v1.3.8：期間選択 ============ */
   function analysisPeriod() {
     const base = currentYM();
     const mode = ($('#drillRange') ? $('#drillRange').value : 'month') || 'month';
@@ -550,7 +552,7 @@
 
   
 
-/* ============ Excelインポート（移行専用 v1.3.7） ============ */
+/* ============ Excelインポート（移行専用 v1.3.8） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -574,7 +576,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.7）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.8）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -589,7 +591,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.7',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.8',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);

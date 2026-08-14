@@ -356,7 +356,7 @@ svg .bar-exp{fill:var(--danger)}
 @media(max-width:760px){.alias-row{grid-template-columns:1fr}.alias-row .muted{font-size:12px}}
 
 
-/* v1.3.7 amount pad / receipt input */
+/* v1.3.8 amount pad / receipt input */
 .amount-pad-btn{margin-left:6px;vertical-align:middle;min-width:38px}
 .keypad{display:grid;grid-template-columns:repeat(4,minmax(52px,1fr));gap:8px;margin:10px 0}
 .keypad .btn{min-height:44px;font-size:18px}

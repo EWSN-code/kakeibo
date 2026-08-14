@@ -43,6 +43,7 @@
     syncExpFromDOM();
     let rows = Array.from({ length: 5 }, () => ({ amount: '', cat: '', sel: true }));
     let pasteText = '';
+    const isBlankRow = r => !(String(r.amount || '').trim()) && !(String(r.cat || '').trim());
     const parseLines = text => String(text || '').split(/\n+/).map(line => {
       const m = M.toHankaku(line).replace(/[,，]/g, '').match(/(-?\d+(?:\.\d+)?)(?!.*\d)/);
       return m ? { amount: m[1], cat: '', sel: true } : null;
@@ -58,7 +59,7 @@
       const upd = () => { syncRows(); $('#ri_total').textContent = yen(total()); };
       $$('#ri_rows input, #ri_rows select').forEach(el => el.addEventListener('input', upd));
       $('#ri_paste').addEventListener('input', () => pasteText = $('#ri_paste').value);
-      $('#ri_parse').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = rows.concat(parsed); pasteText = ''; draw(); });
+      $('#ri_parse').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = rows.filter(r => !isBlankRow(r)).concat(parsed); pasteText = ''; draw(); });
       $('#ri_add').addEventListener('click', () => { syncRows(); rows.push({ amount: '', cat: '', sel: true }); draw(); });
       $('#ri_selectAll').addEventListener('click', () => { syncRows(); const all = rows.some(r => !r.sel); rows.forEach(r => r.sel = all); draw(); });
       $('#ri_remove').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !r.sel); if (!rows.length) rows.push({ amount: '', cat: '', sel: true }); draw(); });
@@ -66,6 +67,7 @@
       $('#ri_cancel').addEventListener('click', closeModal);
       $('#ri_commit').addEventListener('click', () => {
         syncRows();
+        rows = rows.filter(r => !isBlankRow(r));
         const valid = rows.map(r => ({ ...r, value: M.evalAmount(r.amount) })).filter(r => r.amount !== '' && !Number.isNaN(r.value) && r.value);
         if (!valid.length) return toast('金額を1行以上入力してください');
         const uncategorized = valid.filter(r => !r.cat);
