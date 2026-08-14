@@ -11,6 +11,27 @@
   let state = Store.load();
   state = state ? M.migrate(state) : M.makeDummy();
 
+  const THEME_KEY = 'kakeibo_theme_v1';
+  const THEME_PRESETS = {
+    midnight: { label: 'Midnight', bg: '#0f1216', panel: '#171b22', panel2: '#1e232c', line: '#2a313c', text: '#e8ecf1', muted: '#93a0b0', chip: '#232a34' },
+    graphite: { label: 'Graphite', bg: '#111111', panel: '#1b1b1b', panel2: '#262626', line: '#383838', text: '#eeeeee', muted: '#a2a2a2', chip: '#2f2f2f' },
+    deepblue: { label: 'Deep Blue', bg: '#08111f', panel: '#101b2c', panel2: '#182842', line: '#28405f', text: '#e9f1ff', muted: '#9aaec7', chip: '#1e314d' },
+    forest: { label: 'Forest', bg: '#0c1511', panel: '#14201a', panel2: '#1c2b23', line: '#2d4438', text: '#e9f4ee', muted: '#9bb2a4', chip: '#21362b' }
+  };
+  function loadTheme() { try { return JSON.parse(localStorage.getItem(THEME_KEY) || '{}'); } catch(e) { return {}; } }
+  function saveTheme(t) { localStorage.setItem(THEME_KEY, JSON.stringify(t)); }
+  function applyTheme(theme) {
+    theme = theme || loadTheme();
+    const presetName = theme.preset || 'midnight';
+    const preset = THEME_PRESETS[presetName] || THEME_PRESETS.midnight;
+    const root = document.documentElement;
+    Object.entries(preset).forEach(([k, v]) => { if (k !== 'label') root.style.setProperty('--' + k, v); });
+    const accent = theme.accent || '#4f9dff';
+    root.style.setProperty('--accent', accent);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', preset.bg);
+  }
+  applyTheme();
+
   let ui = {};
   function resetEntryState() {
     ui.editId = null; ui.editNextId = null;
@@ -137,7 +158,7 @@
 
   function currentYM() { return $('#ym').value || M.curYM(); }
   function shiftMonth(delta) { const [y, m] = currentYM().split('-').map(Number); const d = new Date(y, m - 1 + delta, 1); $('#ym').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); onMonthChange(); }
-  function onMonthChange() { renderReport(); renderDrill(); renderBudget(); if (!$('#tab-list').hidden) { $('#fltYm').value = currentYM(); renderList(); } }
+  function onMonthChange() { renderReport(); renderDrill(); renderBudget(); renderGoals(); if (!$('#tab-list').hidden) { $('#fltYm').value = currentYM(); renderList(); } }
 
   /* ============ 入力フォーム（サマリなし） ============ */
   function dateField() { return `<div class="field"><label>日付</label><div class="date-wrap"><input type="date" id="f_date" value="${ui._date || M.todayStr()}"><button type="button" class="today-btn" id="f_today">今日</button></div></div>`; }
@@ -431,7 +452,7 @@
 
   /* ============ レポート ============ */
 
-  /* ============ 分析 v1.3.8：期間選択 ============ */
+  /* ============ 分析 v1.4：期間選択 ============ */
   function analysisPeriod() {
     const base = currentYM();
     const mode = ($('#drillRange') ? $('#drillRange').value : 'month') || 'month';
@@ -502,7 +523,20 @@
     $('#ap_ok').addEventListener('click', () => { const applied = {}; $$('#applyRows .apply-row').forEach(row => { const i = +row.dataset.i; if (!row.querySelector('.ap_on').checked) return; const amt = +row.querySelector('.ap_amt').value; const date = row.querySelector('.ap_date').value; const p = pend[i]; state.transactions.push(M.buildFromRecurring(p.rec, p.ym, amt, date)); if (!applied[p.rec.id] || applied[p.rec.id] < p.ym) applied[p.rec.id] = p.ym; }); Object.entries(applied).forEach(([rid, ym]) => { const r = state.recurring.find(x => x.id === rid); if (r && (!r.lastApplied || r.lastApplied < ym)) r.lastApplied = ym; }); persist(); closeModal(); refreshDatalists(); renderAll(); updateGlobalNotice(); toast('固定費を登録しました ✓'); });
     showModal();
   }
-  function renderSettings() { renderCatTree(); renderRecList(); renderTplList(); renderReadings(); $('#dl-top').innerHTML = Object.keys(state.categories.expense).map(s => `<option value="${esc(s)}">`).join(''); }
+  let settingsSection = 'rec';
+  function renderSettingsTabs() {
+    const host = $('#settingsSubtabs'); if (!host) return;
+    $$('#settingsSubtabs button').forEach(b => b.classList.toggle('active', b.dataset.setting === settingsSection));
+    $$('[data-setting-panel]', $('#tab-settings')).forEach(p => p.hidden = p.dataset.settingPanel !== settingsSection);
+  }
+  function renderThemeSettings() {
+    const preset = $('#themePreset'), accent = $('#themeAccent'), preview = $('#themePreview'); if (!preset || !accent) return;
+    const t = loadTheme(); preset.value = t.preset || 'midnight'; accent.value = t.accent || '#4f9dff';
+    const redraw = () => { const nt = { preset: preset.value, accent: accent.value }; saveTheme(nt); applyTheme(nt); if (preview) preview.innerHTML = `<div class="stat"><div class="k">Preview</div><div class="v pos">${THEME_PRESETS[preset.value]?.label || preset.value}</div><div class="sub">Accent ${accent.value}</div></div><button class="btn sm">ボタン</button><span class="tag">タグ</span>`; };
+    preset.oninput = redraw; accent.oninput = redraw; const reset = $('#themeReset'); if (reset) reset.onclick = () => { saveTheme({ preset: 'midnight', accent: '#4f9dff' }); applyTheme(); renderThemeSettings(); };
+    redraw();
+  }
+  function renderSettings() { renderSettingsTabs(); renderThemeSettings(); renderCatTree(); renderRecList(); renderTplList(); renderReadings(); $('#dl-top').innerHTML = Object.keys(state.categories.expense).map(s => `<option value="${esc(s)}">`).join(''); }
   function renderCatTree() { const kind = $('#catKind').value, root = state.categories[kind]; let html = ''; for (const top of Object.keys(root)) { html += `<div style="margin-bottom:6px"><b>${esc(top)}</b> `; const parts = []; for (const mid of Object.keys(root[top] || {})) { const leaves = root[top][mid] || []; parts.push(`<span class="tag">${esc(mid)}${leaves.length ? '：' + leaves.map(esc).join('・') : ''}</span>`); } html += parts.join(' ') + `</div>`; } $('#catTree').innerHTML = html || '<p class="muted">カテゴリなし</p>'; }
 
   function categoryPaths(kind){const out=[];const root=state.categories[kind];const pfx=kind==='income'?'inc':'exp';Object.keys(root).forEach(top=>{out.push({path:pfx+'>'+top,label:top});const mids=root[top]||{};Object.keys(mids).forEach(mid=>{out.push({path:pfx+'>'+top+'>'+mid,label:top+' › '+mid});(mids[mid]||[]).forEach(leaf=>out.push({path:pfx+'>'+top+'>'+mid+'>'+leaf,label:top+' › '+mid+' › '+leaf}));});});return out;}
@@ -552,7 +586,7 @@
 
   
 
-/* ============ Excelインポート（移行専用 v1.3.8） ============ */
+/* ============ Excelインポート（移行専用 v1.4） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -576,7 +610,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.3.8）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.4）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -591,7 +625,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.3.8',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.4',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);
@@ -644,7 +678,6 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     $('#budgetList').innerHTML = rep.entries.length ? rep.entries.map(e => { const p = Math.round(e.ratio * 100); const cls = e.ratio >= 1 ? 'over' : (e.ratio >= 0.8 ? 'warn' : ''); const carryHtml = (rep.rollover && Math.abs(e.carry) > 0.5) ? ` <span class="acc-sub">(基準 ${yen(e.budget)} ${e.carry >= 0 ? '＋繰越 ' : '−超過 '}${yen(Math.abs(e.carry))})</span>` : ''; return `<div class="bud-row"><div class="bud-head"><div><span class="bud-name">${esc(e.label)}</span> <span class="acc-sub">${p}% 消化</span>${carryHtml}</div><div class="bud-fig">${yen(e.spent)} / ${yen(e.effective)} ・ 残 <b class="${e.remain < 0 ? 'neg' : 'pos'}">${yen(e.remain)}</b> <button class="btn ghost sm" data-budedit="${esc(e.catPath)}">編集</button> <button class="btn danger sm" data-buddel="${esc(e.catPath)}">削除</button></div></div><div class="bar ${cls}"><span style="width:${Math.min(100, p)}%"></span></div></div>`; }).join('') : `<p class="muted">予算が未設定です。「＋予算」から追加してください。</p>`;
     $$('[data-budedit]', $('#budgetList')).forEach(b => b.addEventListener('click', () => openBudgetModal(b.dataset.budedit)));
     $$('[data-buddel]', $('#budgetList')).forEach(b => b.addEventListener('click', () => { delete state.budgets[b.dataset.buddel]; persist(); renderBudget(); renderDrill(); toast('予算を削除しました'); }));
-    renderGoals();
   }
   function openBudgetModal(catPath) { const editing = catPath != null; const cur = editing ? state.budgets[catPath] : 0; const opts = M.budgetableCategories(state.categories).map(c => `<option value="${c.path}" ${c.path === catPath ? 'selected' : ''}>${c.label}</option>`).join(''); $('#modal').innerHTML = `<h3>${editing ? '予算を編集' : '予算を設定'}</h3><div class="field"><label>カテゴリ（大/中/小どの階層でもOK）</label><select id="bud_cat" class="catsel" ${editing ? 'disabled' : ''}>${opts}</select></div><div class="field"><label>月予算</label><input type="number" id="bud_amt" value="${cur || ''}" placeholder="例: 40000"></div><p class="hint">この階層＋配下すべての支出を合計。分析画面にも表示されます。</p><div class="actions"><button class="btn ghost" id="bud_cancel">キャンセル</button><button class="btn" id="bud_ok">保存</button></div>`; $('#bud_cancel').addEventListener('click', closeModal); $('#bud_ok').addEventListener('click', () => { const path = editing ? catPath : $('#bud_cat').value; const amt = +$('#bud_amt').value; if (!amt) return toast('金額を入れてください'); state.budgets[path] = amt; persist(); closeModal(); renderBudget(); renderDrill(); toast('保存しました ✓'); }); showModal(); }
 
@@ -685,7 +718,7 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     $$('[data-wishdel]', $('#wishList')).forEach(b => b.addEventListener('click', () => { if (!confirm('削除しますか？')) return; state.wishlist = state.wishlist.filter(w => w.id !== b.dataset.wishdel); persist(); renderWishlist(); toast('削除しました'); }));
     $$('[data-wishdone]', $('#wishList')).forEach(b => b.addEventListener('click', () => { const w = state.wishlist.find(x => x.id === b.dataset.wishdone); if (!w) return; w.status = (w.status === 'done') ? 'active' : 'done'; persist(); renderWishlist(); toast(w.status === 'done' ? '購入済にしました' : '未購入に戻しました'); }));
     $$('[data-wishlink]', $('#wishList')).forEach(b => b.addEventListener('click', () => gotoListWithKeyword(b.dataset.wishlink)));
-    $$('[data-wishgoal]', $('#wishList')).forEach(b => b.addEventListener('click', () => { const w = state.wishlist.find(x => x.id === b.dataset.wishgoal); if (!w) return; const goal = { id: 'g_' + Math.random().toString(36).slice(2, 8), name: w.name, target: w.price || 0, targetYM: w.desiredYM || null, saved: 0, priority: w.priority || 3, note: w.note || 'ほしいものから', linkedAccId: null }; state.goals.push(goal); w.goalId = goal.id; persist(); renderWishlist(); toast('積立目標に変換しました ✓（予算・積立タブで確認）'); }));
+    $$('[data-wishgoal]', $('#wishList')).forEach(b => b.addEventListener('click', () => { const w = state.wishlist.find(x => x.id === b.dataset.wishgoal); if (!w) return; const goal = { id: 'g_' + Math.random().toString(36).slice(2, 8), name: w.name, target: w.price || 0, targetYM: w.desiredYM || null, saved: 0, priority: w.priority || 3, note: w.note || 'ほしいものから', linkedAccId: null }; state.goals.push(goal); w.goalId = goal.id; persist(); renderWishlist(); toast('積立目標に変換しました ✓（積立タブで確認）'); }));
   }
   function openWishModal(id) { const editing = id ? state.wishlist.find(w => w.id === id) : null; const w = editing || { id: 'w_' + Math.random().toString(36).slice(2, 8), name: '', price: 0, desiredYM: '', priority: 3, note: '', goalId: null, tags: [], status: 'active', store: '', url: '' }; const tagSug = allWishTags(); $('#modal').innerHTML = `<h3>${editing ? 'ほしいものを編集' : 'ほしいものを追加'}</h3><div class="field"><label>名称</label><input id="wi_name" value="${esc(w.name)}" placeholder="例: ヘッドホン / 包丁 / クミンパウダー"></div><div class="row"><div class="field"><label>価格(目安)</label><input type="number" id="wi_price" value="${w.price || ''}"></div><div class="field"><label>ほしい時期(任意)</label><input type="month" id="wi_ym" value="${w.desiredYM || ''}"></div><div class="field"><label>優先度(1=高)</label><input type="number" id="wi_pri" min="1" max="9" value="${w.priority || 3}"></div></div><div class="row"><div class="field"><label>買う店(任意)</label><input id="wi_store" list="dl-store" value="${esc(w.store || '')}" placeholder="例: ニトリ / Amazon"></div><div class="field"><label>URL(任意)</label><input id="wi_url" value="${esc(w.url || '')}" placeholder="https://"></div></div><div class="field"><label>タグ（カンマ区切り）</label><input id="wi_tags" value="${esc((w.tags || []).join(', '))}" placeholder="例: ネットで買う, キッチン"></div>${tagSug.length ? `<div class="chips" id="wi_tagsug">${tagSug.map(t => `<button type="button" class="chip-btn" data-t="${esc(t)}">+ ${esc(t)}</button>`).join('')}</div>` : ''}<div class="field"><label>メモ</label><input id="wi_note" value="${esc(w.note || '')}"></div><div class="actions"><button class="btn ghost" id="wi_cancel">キャンセル</button><button class="btn" id="wi_ok">保存</button></div>`; $$('#wi_tagsug .chip-btn').forEach(b => b.addEventListener('click', () => { const cur = $('#wi_tags').value.split(',').map(s => s.trim()).filter(Boolean); if (!cur.includes(b.dataset.t)) cur.push(b.dataset.t); $('#wi_tags').value = cur.join(', '); })); $('#wi_cancel').addEventListener('click', closeModal); $('#wi_ok').addEventListener('click', () => { const name = $('#wi_name').value.trim(); if (!name) return toast('名称を入れてください'); const obj = editing || w; obj.name = name; obj.price = +$('#wi_price').value || 0; obj.desiredYM = $('#wi_ym').value || null; obj.priority = +$('#wi_pri').value || 3; obj.store = $('#wi_store').value; obj.url = $('#wi_url').value; obj.tags = $('#wi_tags').value.split(',').map(s => s.trim()).filter(Boolean); obj.note = $('#wi_note').value; if (!editing) { obj.status = 'active'; state.wishlist.push(obj); } persist(); closeModal(); renderWishlist(); toast('保存しました ✓'); }); showModal(); }
 
@@ -725,13 +758,13 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
   function openPriceModal(id) { const editing = id ? state.priceLogs.find(p => p.id === id) : null; const e = editing || { id: 'pl_' + Math.random().toString(36).slice(2, 8), item: '', date: M.todayStr(), store: '', branch: '', price: 0, qty: 0, unit: '総額', note: '' }; $('#modal').innerHTML = `<h3>${editing ? '価格を編集' : '価格を記録'}</h3><div class="field"><label>品目</label><input id="pl_item" list="dl-item" value="${esc(e.item)}" placeholder="例: 卵(10個) / 牛乳 / 鶏むね肉"></div><div class="row"><div class="field"><label>日付</label><input type="date" id="pl_date" value="${e.date}"></div><div class="field" style="flex:2"><label>店名</label><input id="pl_store" list="dl-store" value="${esc(e.store)}"></div><div class="field"><label>支店</label><input id="pl_branch" list="dl-branch" value="${esc(e.branch)}"></div></div><div class="row"><div class="field"><label>価格</label><input type="number" id="pl_price" value="${e.price || ''}"></div><div class="field"><label>数量</label><input type="number" id="pl_qty" value="${e.qty || ''}"></div><div class="field"><label>単位</label><select id="pl_unit">${PRICE_UNITS.map(u => `<option ${u === e.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div><div class="acc-sub" id="pl_preview" style="margin-bottom:8px"></div><div class="field"><label>メモ</label><input id="pl_note" value="${esc(e.note || '')}"></div><div class="actions"><button class="btn ghost" id="pl_cancel">キャンセル</button><button class="btn" id="pl_ok">保存</button></div>`; const upd = () => { const n = M.normalizedUnitPrice({ price: +$('#pl_price').value, qty: +$('#pl_qty').value, unit: $('#pl_unit').value }); $('#pl_preview').textContent = n ? '実質単価 ≈ ' + fmtNorm(n) : '数量を入れると実質単価を計算します'; }; ['#pl_price', '#pl_qty', '#pl_unit'].forEach(s => $(s).addEventListener('input', upd)); upd(); $('#pl_cancel').addEventListener('click', closeModal); $('#pl_ok').addEventListener('click', () => { const item = $('#pl_item').value.trim(); if (!item) return toast('品目を入れてください'); const price = +$('#pl_price').value; if (!price) return toast('価格を入れてください'); const data = { item, date: $('#pl_date').value, store: $('#pl_store').value, branch: $('#pl_branch').value, price, qty: +$('#pl_qty').value || 0, unit: $('#pl_unit').value, note: $('#pl_note').value }; if (editing) Object.assign(editing, data); else { M.addPriceLog(state, data); priceOpen.add(item); } persist(); refreshDatalists(); closeModal(); renderPrice(); toast('保存しました ✓'); }); showModal(); }
 
   /* ============ ナビ ============ */
-  const TABS = ['entry', 'list', 'drill', 'budget', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
-  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: '分析', budget: '予算・積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
+  const TABS = ['entry', 'list', 'drill', 'budget', 'goals', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
+  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: '分析', budget: '予算', goals: '積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
   const BOTTOM_TABS = ['entry', 'list', 'drill', 'budget'];
   function renderDrawer() {
     const groups = [
       ['記録', [['entry', '✎'], ['list', '☰']]],
-      ['分析', [['drill', '◔'], ['report', '▤'], ['budget', '◈']]],
+      ['分析', [['drill', '◔'], ['report', '▤'], ['budget', '◈'], ['goals', '◆']]],
       ['リスト', [['wishlist', '♡'], ['price', '⇅']]],
       ['口座', [['accounts', '▦'], ['cards', '▣']]],
       ['その他', [['settings', '⚙']]],
@@ -756,6 +789,7 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     if (name === 'list') { if (!$('#fltYm').dataset.init) { $('#fltYm').value = currentYM(); $('#fltYm').dataset.init = '1'; } renderList(); }
     else if (name === 'drill') renderDrill();
     else if (name === 'budget') renderBudget();
+    else if (name === 'goals') renderGoals();
     else if (name === 'wishlist') renderWishlist();
     else if (name === 'price') renderPrice();
     else if (name === 'accounts') renderAccounts();
@@ -765,10 +799,11 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     else renderEntry();
     window.scrollTo({ top: 0, behavior: 'auto' });
   }
-  function renderAll() { renderEntry(); renderList(); renderDrill(); renderBudget(); renderWishlist(); renderPrice(); renderAccounts(); renderCards(); renderReport(); renderSettings(); }
+  function renderAll() { renderEntry(); renderList(); renderDrill(); renderBudget(); renderGoals(); renderWishlist(); renderPrice(); renderAccounts(); renderCards(); renderReport(); renderSettings(); }
 
   function bind() {
     $('#tabs').addEventListener('click', e => { if (e.target.dataset.tab) switchTab(e.target.dataset.tab); });
+    const st=$('#settingsSubtabs'); if(st)st.addEventListener('click', e => { const b=e.target.closest('button[data-setting]'); if(!b)return; settingsSection=b.dataset.setting; renderSettingsTabs(); renderThemeSettings(); });
     $('#bottomNav').addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.tab) switchTab(b.dataset.tab); else if (b.dataset.menu) openDrawer(); });
     $('#hamburger').addEventListener('click', openDrawer);
     $('#drawerClose').addEventListener('click', closeDrawer);

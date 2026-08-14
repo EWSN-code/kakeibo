@@ -18,7 +18,20 @@
     $('#ap_ok').addEventListener('click', () => { const applied = {}; $$('#applyRows .apply-row').forEach(row => { const i = +row.dataset.i; if (!row.querySelector('.ap_on').checked) return; const amt = +row.querySelector('.ap_amt').value; const date = row.querySelector('.ap_date').value; const p = pend[i]; state.transactions.push(M.buildFromRecurring(p.rec, p.ym, amt, date)); if (!applied[p.rec.id] || applied[p.rec.id] < p.ym) applied[p.rec.id] = p.ym; }); Object.entries(applied).forEach(([rid, ym]) => { const r = state.recurring.find(x => x.id === rid); if (r && (!r.lastApplied || r.lastApplied < ym)) r.lastApplied = ym; }); persist(); closeModal(); refreshDatalists(); renderAll(); updateGlobalNotice(); toast('固定費を登録しました ✓'); });
     showModal();
   }
-  function renderSettings() { renderCatTree(); renderRecList(); renderTplList(); renderReadings(); $('#dl-top').innerHTML = Object.keys(state.categories.expense).map(s => `<option value="${esc(s)}">`).join(''); }
+  let settingsSection = 'rec';
+  function renderSettingsTabs() {
+    const host = $('#settingsSubtabs'); if (!host) return;
+    $$('#settingsSubtabs button').forEach(b => b.classList.toggle('active', b.dataset.setting === settingsSection));
+    $$('[data-setting-panel]', $('#tab-settings')).forEach(p => p.hidden = p.dataset.settingPanel !== settingsSection);
+  }
+  function renderThemeSettings() {
+    const preset = $('#themePreset'), accent = $('#themeAccent'), preview = $('#themePreview'); if (!preset || !accent) return;
+    const t = loadTheme(); preset.value = t.preset || 'midnight'; accent.value = t.accent || '#4f9dff';
+    const redraw = () => { const nt = { preset: preset.value, accent: accent.value }; saveTheme(nt); applyTheme(nt); if (preview) preview.innerHTML = `<div class="stat"><div class="k">Preview</div><div class="v pos">${THEME_PRESETS[preset.value]?.label || preset.value}</div><div class="sub">Accent ${accent.value}</div></div><button class="btn sm">ボタン</button><span class="tag">タグ</span>`; };
+    preset.oninput = redraw; accent.oninput = redraw; const reset = $('#themeReset'); if (reset) reset.onclick = () => { saveTheme({ preset: 'midnight', accent: '#4f9dff' }); applyTheme(); renderThemeSettings(); };
+    redraw();
+  }
+  function renderSettings() { renderSettingsTabs(); renderThemeSettings(); renderCatTree(); renderRecList(); renderTplList(); renderReadings(); $('#dl-top').innerHTML = Object.keys(state.categories.expense).map(s => `<option value="${esc(s)}">`).join(''); }
   function renderCatTree() { const kind = $('#catKind').value, root = state.categories[kind]; let html = ''; for (const top of Object.keys(root)) { html += `<div style="margin-bottom:6px"><b>${esc(top)}</b> `; const parts = []; for (const mid of Object.keys(root[top] || {})) { const leaves = root[top][mid] || []; parts.push(`<span class="tag">${esc(mid)}${leaves.length ? '：' + leaves.map(esc).join('・') : ''}</span>`); } html += parts.join(' ') + `</div>`; } $('#catTree').innerHTML = html || '<p class="muted">カテゴリなし</p>'; }
 
   function categoryPaths(kind){const out=[];const root=state.categories[kind];const pfx=kind==='income'?'inc':'exp';Object.keys(root).forEach(top=>{out.push({path:pfx+'>'+top,label:top});const mids=root[top]||{};Object.keys(mids).forEach(mid=>{out.push({path:pfx+'>'+top+'>'+mid,label:top+' › '+mid});(mids[mid]||[]).forEach(leaf=>out.push({path:pfx+'>'+top+'>'+mid+'>'+leaf,label:top+' › '+mid+' › '+leaf}));});});return out;}

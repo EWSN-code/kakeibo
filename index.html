@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<title>家計簿 v1.3.8 ― 複式簿記ハイブリッド</title>
+<title>家計簿 v1.4 ― 複式簿記ハイブリッド</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -36,7 +36,7 @@
 <div class="app">
   <header class="top">
     <button class="hamburger" id="hamburger" title="メニュー">≡</button>
-    <div class="brand">家計簿 <small>v1.3.8</small></div>
+    <div class="brand">家計簿 <small>v1.4</small></div>
     <div class="cur-tab" id="curTabName"></div>
     <div class="spacer"></div>
     <div class="account-bar" id="accountBar"></div>
@@ -52,7 +52,8 @@
     <button data-tab="entry" class="active">入力</button>
     <button data-tab="list">取引一覧</button>
     <button data-tab="drill">分析</button>
-    <button data-tab="budget">予算・積立</button>
+    <button data-tab="budget">予算</button>
+    <button data-tab="goals">積立</button>
     <button data-tab="wishlist">ほしいもの</button>
     <button data-tab="price">価格比較</button>
     <button data-tab="accounts">残高・口座</button>
@@ -122,6 +123,9 @@
       <div class="grid cols-3" id="budgetCards"></div>
       <div id="budgetList"></div>
     </div>
+  </section>
+
+  <section id="tab-goals" hidden>
     <div class="panel">
       <div class="section-title"><h3>積立目標（シミュレーター）</h3><button class="btn sm" id="addGoal">＋目標</button></div>
       <div class="sim-box">
@@ -181,22 +185,30 @@
   </section>
 
   <section id="tab-settings" hidden>
-    <div class="panel">
+    <div class="settings-subtabs" id="settingsSubtabs">
+      <button data-setting="rec" class="active">固定費</button>
+      <button data-setting="tpl">テンプレ</button>
+      <button data-setting="reading">読み仮名</button>
+      <button data-setting="cat">カテゴリ</button>
+      <button data-setting="theme">テーマ</button>
+      <button data-setting="data">データ</button>
+    </div>
+    <div class="panel" data-setting-panel="rec">
       <div class="section-title"><h3>固定費・定期収入</h3><button class="btn sm" id="addRec">＋テンプレ</button></div>
       <p class="hint">家賃・サブスク・給与や隔月の水道代など。土日祝は翌/前営業日に自動調整できます。</p>
       <div id="recList"></div>
     </div>
-    <div class="panel">
+    <div class="panel" data-setting-panel="tpl">
       <div class="section-title"><h3>レシートテンプレート</h3><button class="btn sm" id="addTpl">＋テンプレ</button></div>
       <p class="hint">よく買う組み合わせ（店・カテゴリ・支払・電卓/レシート）を保存。入力画面から1タップ呼び出し。</p>
       <div id="tplList"></div>
     </div>
-    <div class="panel">
+    <div class="panel" data-setting-panel="reading">
       <div class="section-title"><h3>読み仮名の管理</h3><button class="btn sm" id="addReading">＋読み</button></div>
       <p class="hint">店名・品目の「よみ」を登録すると、漢字でもひらがな検索でヒットします。</p>
       <div id="readingList"></div>
     </div>
-    <div class="panel">
+    <div class="panel" data-setting-panel="cat">
       <h3>カテゴリ</h3>
       <p class="hint">小カテゴリを自由に追加できます。</p>
       <div class="row">
@@ -210,7 +222,17 @@
       <div class="row" style="margin-top:8px"><button class="btn ghost sm" id="renameCat">カテゴリ名変更</button><button class="btn danger sm" id="deleteUnusedCat">未使用カテゴリ削除</button></div>
       <div id="catTree" style="margin-top:12px"></div>
     </div>
-    <div class="panel">
+    <div class="panel" data-setting-panel="theme">
+      <h3>テーマ</h3>
+      <p class="hint">ダーク背景プリセットとアクセント色を選べます。設定はこの端末に保存されます。</p>
+      <div class="grid cols-3">
+        <div class="field"><label>背景プリセット</label><select id="themePreset"><option value="midnight">Midnight</option><option value="graphite">Graphite</option><option value="deepblue">Deep Blue</option><option value="forest">Forest</option></select></div>
+        <div class="field"><label>アクセント色</label><input type="color" id="themeAccent" value="#4f9dff"></div>
+        <div class="field"><label>操作</label><button class="btn ghost sm" id="themeReset">標準に戻す</button></div>
+      </div>
+      <div id="themePreview" class="theme-preview"></div>
+    </div>
+    <div class="panel" data-setting-panel="data">
       <h3>データ（バックアップ / 移行）</h3>
       <p class="hint">CSVは1行=1明細のジャーナル形式。取込時に全置換/上書き/保持を選択。JSONは完全バックアップ。</p>
       <div class="row">

@@ -11,6 +11,27 @@
   let state = Store.load();
   state = state ? M.migrate(state) : M.makeDummy();
 
+  const THEME_KEY = 'kakeibo_theme_v1';
+  const THEME_PRESETS = {
+    midnight: { label: 'Midnight', bg: '#0f1216', panel: '#171b22', panel2: '#1e232c', line: '#2a313c', text: '#e8ecf1', muted: '#93a0b0', chip: '#232a34' },
+    graphite: { label: 'Graphite', bg: '#111111', panel: '#1b1b1b', panel2: '#262626', line: '#383838', text: '#eeeeee', muted: '#a2a2a2', chip: '#2f2f2f' },
+    deepblue: { label: 'Deep Blue', bg: '#08111f', panel: '#101b2c', panel2: '#182842', line: '#28405f', text: '#e9f1ff', muted: '#9aaec7', chip: '#1e314d' },
+    forest: { label: 'Forest', bg: '#0c1511', panel: '#14201a', panel2: '#1c2b23', line: '#2d4438', text: '#e9f4ee', muted: '#9bb2a4', chip: '#21362b' }
+  };
+  function loadTheme() { try { return JSON.parse(localStorage.getItem(THEME_KEY) || '{}'); } catch(e) { return {}; } }
+  function saveTheme(t) { localStorage.setItem(THEME_KEY, JSON.stringify(t)); }
+  function applyTheme(theme) {
+    theme = theme || loadTheme();
+    const presetName = theme.preset || 'midnight';
+    const preset = THEME_PRESETS[presetName] || THEME_PRESETS.midnight;
+    const root = document.documentElement;
+    Object.entries(preset).forEach(([k, v]) => { if (k !== 'label') root.style.setProperty('--' + k, v); });
+    const accent = theme.accent || '#4f9dff';
+    root.style.setProperty('--accent', accent);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', preset.bg);
+  }
+  applyTheme();
+
   let ui = {};
   function resetEntryState() {
     ui.editId = null; ui.editNextId = null;
@@ -137,5 +158,5 @@
 
   function currentYM() { return $('#ym').value || M.curYM(); }
   function shiftMonth(delta) { const [y, m] = currentYM().split('-').map(Number); const d = new Date(y, m - 1 + delta, 1); $('#ym').value = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); onMonthChange(); }
-  function onMonthChange() { renderReport(); renderDrill(); renderBudget(); if (!$('#tab-list').hidden) { $('#fltYm').value = currentYM(); renderList(); } }
+  function onMonthChange() { renderReport(); renderDrill(); renderBudget(); renderGoals(); if (!$('#tab-list').hidden) { $('#fltYm').value = currentYM(); renderList(); } }
 

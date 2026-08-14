@@ -1,11 +1,11 @@
 {
-  "version": "v1.3.8",
+  "version": "v1.4",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
   "parts": [
     {
       "file": "00_core_start.part.js",
-      "description": "Core start / shared helpers"
+      "description": "Core start / shared helpers and theme"
     },
     {
       "file": "10_entry.part.js",
@@ -29,7 +29,7 @@
     },
     {
       "file": "60_settings_recurring.part.js",
-      "description": "Settings, recurring, categories, templates"
+      "description": "Settings subtabs, theme, recurring, categories, templates"
     },
     {
       "file": "70_import_excel.part.js",
@@ -37,7 +37,7 @@
     },
     {
       "file": "80_budget_goals.part.js",
-      "description": "Budget and goals"
+      "description": "Budget and goals split logic"
     },
     {
       "file": "90_wishlist_price.part.js",
@@ -48,5 +48,5 @@
       "description": "Navigation, binding, boot"
     }
   ],
-  "bundle_sha256": "47133f12bcf074f0a841051e04e0c448d617cbe2d3ff3908c9b896911e48729f"
+  "bundle_sha256": "d57c63114e9589a27e467ed9d86e557b27128e8e72a3fac2bf7c0434f7f06d7c"
 }
