@@ -1,5 +1,5 @@
 {
-  "version": "v1.5",
+  "version": "v1.6",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
   "parts": [
@@ -13,7 +13,7 @@
     },
     {
       "file": "20_list.part.js",
-      "description": "Transaction list and bulk edits"
+      "description": "Transaction list and category exact filtering"
     },
     {
       "file": "30_analysis_base.part.js",
@@ -29,7 +29,7 @@
     },
     {
       "file": "60_settings_recurring.part.js",
-      "description": "Settings subtabs, theme, recurring, categories, templates"
+      "description": "Settings subtabs, category manager, recurring, templates"
     },
     {
       "file": "70_import_excel.part.js",
@@ -48,5 +48,5 @@
       "description": "Navigation, binding, boot"
     }
   ],
-  "bundle_sha256": "0f324181cdcba26ed5b639e87bbb281350632584900e2c0528ac95bfa3b549c4"
+  "bundle_sha256": "d32d8f87e6a9d1fbce769bca7b549ad1a20bfc2c601034f41c4b7d63018b95ec"
 }
