@@ -98,22 +98,51 @@ let listCategoryFilter = null;
   function enhanceCatSelects(root) {
     $$('select.catsel', root || document).forEach(sel => {
       if (sel.dataset.enh) return; sel.dataset.enh = '1';
-      const opts = Array.from(sel.options).map(o => ({ value: o.value, label: o.textContent }));
+      const opts = Array.from(sel.options).map(o => ({ value: o.value, label: o.textContent })).filter(o => o.value || o.label);
       const wrap = el('div', { class: 'catcombo' }); sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel); sel.classList.add('cc-native');
       const input = el('input', { class: 'cc-input', type: 'text', placeholder: 'カテゴリを検索…' });
       const disp = o => o ? (isNarrow() ? catLeaf(o.label) : o.label) : '';
       const cur = opts.find(o => o.value === sel.value); input.value = disp(cur);
       const pop = el('div', { class: 'ac-pop' }); wrap.appendChild(input); wrap.appendChild(pop);
-      let items = [], active = -1, composing = false;
+      let items = [], active = -1, composing = false, autoTimer = null; input._yomiParts = []; input._curYomi = '';
+      const readingFor = o => ((state.readings && (state.readings[o.value] || state.readings[o.label] || state.readings[catLeaf(o.label)])) || '');
       const close = () => { pop.classList.remove('show'); active = -1; };
-      const commit = o => { sel.value = o.value; input.value = disp(o); sel.dispatchEvent(new Event('change', { bubbles: true })); close(); };
-      const render = () => { const q = input.value.trim(); const qn = M.normReading(q); items = !q ? opts.slice(0, 60) : opts.filter(o => o.label.includes(q) || M.normReading(o.label).includes(qn)); items = items.slice(0, 60); if (!items.length) { close(); return; } pop.innerHTML = items.map((o, i) => { const h = catHead(o.label), lf = catLeaf(o.label); return `<div class="ac-item ${i === active ? 'active' : ''}" data-i="${i}">${h ? `<div class="cc-head">${esc(h)}</div>` : ''}<div class="cc-leaf">${esc(lf)}</div></div>`; }).join(''); pop.classList.add('show'); $$('.ac-item', pop).forEach(it => it.addEventListener('mousedown', e => { e.preventDefault(); commit(items[+it.dataset.i]); })); };
+      const rememberReading = o => { const rd = (input._yomiParts || []).join(''); if (rd && o && o.value) { state.readings = state.readings || {}; state.readings[o.value] = rd; state.readings[o.label] = rd; state.readings[catLeaf(o.label)] = rd; persist(); } input._yomiParts = []; input._curYomi = ''; };
+      const commit = o => { if (!o) return; sel.value = o.value; input.value = disp(o); rememberReading(o); sel.dispatchEvent(new Event('change', { bubbles: true })); close(); };
+      const render = () => {
+        const q = input.value.trim(); const qn = M.normReading(q);
+        items = !q ? opts.slice(0, 60) : opts.filter(o => o.label.includes(q) || M.normReading(o.label).includes(qn) || M.normReading(readingFor(o)).includes(qn));
+        items = items.slice(0, 60);
+        clearTimeout(autoTimer);
+        if (!items.length) { close(); return; }
+        pop.innerHTML = items.map((o, i) => { const h = catHead(o.label), lf = catLeaf(o.label); const rd = readingFor(o); return `<div class="ac-item ${i === active ? 'active' : ''}" data-i="${i}">${h ? `<div class="cc-head">${esc(h)}</div>` : ''}<div class="cc-leaf">${esc(lf)}</div>${rd ? `<div class="cc-head">${esc(rd)}</div>` : ''}</div>`; }).join('');
+        pop.classList.add('show');
+        $$('.ac-item', pop).forEach(it => it.addEventListener('mousedown', e => { e.preventDefault(); commit(items[+it.dataset.i]); }));
+        if (q && !composing && items.length === 1 && sel.value !== items[0].value) autoTimer = setTimeout(() => commit(items[0]), 120);
+      };
       input.addEventListener('compositionstart', () => composing = true);
-      input.addEventListener('compositionend', () => { composing = false; render(); });
+      input.addEventListener('compositionupdate', e => { if (e.data && /^[぀-ゟーｰ\u30fc\s]+$/.test(e.data)) input._curYomi = e.data; });
+      input.addEventListener('compositionend', () => { composing = false; if (input._curYomi) { input._yomiParts.push(input._curYomi); input._curYomi = ''; } render(); });
       input.addEventListener('input', () => { if (!composing) render(); });
       input.addEventListener('focus', () => { input.select && input.select(); render(); });
       input.addEventListener('blur', () => setTimeout(() => { const c = opts.find(o => o.value === sel.value); if (c) input.value = disp(c); close(); }, 150));
       input.addEventListener('keydown', e => { if (!pop.classList.contains('show')) return; if (e.key === 'ArrowDown') { e.preventDefault(); active = Math.min(items.length - 1, active + 1); render(); } else if (e.key === 'ArrowUp') { e.preventDefault(); active = Math.max(0, active - 1); render(); } else if (e.key === 'Enter') { if (active >= 0) { e.preventDefault(); commit(items[active]); } } else if (e.key === 'Escape') close(); });
+    });
+  }
+  function enhanceAccountSelects(root) {
+    $$('select.accsel', root || document).forEach(sel => {
+      if (sel.dataset.accenh) return; sel.dataset.accenh = '1';
+      const opts = Array.from(sel.options).map(o => ({ value: o.value, label: o.textContent })).filter(o => o.value);
+      const wrap = el('div', { class: 'catcombo acccombo' }); sel.parentNode.insertBefore(wrap, sel); wrap.appendChild(sel); sel.classList.add('cc-native');
+      const input = el('input', { class: 'cc-input', type: 'text', placeholder: '支払手段を検索…' });
+      const pop = el('div', { class: 'ac-pop' }); wrap.appendChild(input); wrap.appendChild(pop);
+      const disp = o => o ? o.label : '';
+      const cur = opts.find(o => o.value === sel.value); input.value = disp(cur);
+      let items = [], active = -1;
+      const close = () => { pop.classList.remove('show'); active = -1; };
+      const commit = o => { if (!o) return; sel.value = o.value; input.value = disp(o); sel.dispatchEvent(new Event('change', { bubbles: true })); close(); };
+      const render = () => { const q=input.value.trim(), qn=M.normReading(q); items = !q ? opts.slice(0,80) : opts.filter(o => o.label.includes(q) || M.normReading(o.label).includes(qn)).slice(0,80); if(!items.length){close();return;} pop.innerHTML = items.map((o,i)=>`<div class="ac-item ${i===active?'active':''}" data-i="${i}">${esc(o.label)}</div>`).join(''); pop.classList.add('show'); $$('.ac-item',pop).forEach(it=>it.addEventListener('mousedown',e=>{e.preventDefault();commit(items[+it.dataset.i]);})); if(q && items.length===1 && sel.value!==items[0].value) setTimeout(()=>commit(items[0]),120); };
+      input.addEventListener('input', render); input.addEventListener('focus',()=>{input.select&&input.select();render();}); input.addEventListener('blur',()=>setTimeout(()=>{const c=opts.find(o=>o.value===sel.value); if(c)input.value=disp(c); close();},150)); input.addEventListener('keydown',e=>{ if(!pop.classList.contains('show'))return; if(e.key==='ArrowDown'){e.preventDefault();active=Math.min(items.length-1,active+1);render();} else if(e.key==='ArrowUp'){e.preventDefault();active=Math.max(0,active-1);render();} else if(e.key==='Enter'&&active>=0){e.preventDefault();commit(items[active]);} else if(e.key==='Escape')close(); });
     });
   }
   function addAmountPadButtons(root) {

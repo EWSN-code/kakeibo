@@ -409,3 +409,11 @@ svg .bar-exp{fill:var(--danger)}
 .credit-line .c_del{flex:0 0 auto;margin-bottom:0}
 .credit-line .c_after{line-height:1.45;padding-left:2px}
 @media(max-width:760px){.credit-line{display:grid;grid-template-columns:1fr auto;align-items:end}.credit-line .credit-account-field{grid-column:1 / -1;min-width:0}.credit-line .credit-amt-field{grid-column:auto;min-width:0;flex:auto}.credit-line .c_after{grid-column:1 / -1}.credit-line .c_del{grid-column:2}}
+
+
+/* v1.6.2m account/category input acceleration */
+.acccombo .ac-pop{max-height:320px;overflow:auto}
+.acccombo .cc-input{min-width:260px}
+#c_single + .ac-pop,.acccombo .ac-pop{z-index:120}
+.receipt-setting-row,.receipt-store-row{align-items:end}
+@media(max-width:760px){.acccombo .cc-input{min-width:0}.receipt-setting-row,.receipt-store-row{display:grid;grid-template-columns:1fr}.receipt-setting-row .btn,.receipt-store-row .btn{justify-self:start}}

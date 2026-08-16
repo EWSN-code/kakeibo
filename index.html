@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<title>家計簿 v1.6.2l ― 複式簿記ハイブリッド</title>
+<title>家計簿 v1.6.2m ― 複式簿記ハイブリッド</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -36,7 +36,7 @@
 <div class="app">
   <header class="top">
     <button class="hamburger" id="hamburger" title="メニュー">≡</button>
-    <div class="brand">家計簿 <small>v1.6.2l</small></div>
+    <div class="brand">家計簿 <small>v1.6.2m</small></div>
     <div class="cur-tab" id="curTabName"></div>
     <div class="spacer"></div>
     <div class="account-bar" id="accountBar"></div>
@@ -192,6 +192,7 @@
       <button data-setting="reading">読み仮名</button>
       <button data-setting="cat">カテゴリ</button>
       <button data-setting="theme">テーマ</button>
+      <button data-setting="receipt">レシート</button>
       <button data-setting="data">データ</button>
     </div>
     <div class="panel" data-setting-panel="rec">
@@ -232,6 +233,12 @@
         <div class="field"><label>操作</label><button class="btn ghost sm" id="themeReset">標準に戻す</button></div>
       </div>
       <div id="themePreview" class="theme-preview"></div>
+    </div>
+
+    <div class="panel" data-setting-panel="receipt">
+      <h3>レシート入力設定</h3>
+      <p class="hint">税率・端数処理・店別の税込/外税既定値を設定できます。</p>
+      <div id="receiptSettings"></div>
     </div>
     <div class="panel" data-setting-panel="data">
       <h3>データ（バックアップ / 移行）</h3>
