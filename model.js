@@ -32,7 +32,7 @@
   function migrate(s) {
     if (!s.recurring) s.recurring = []; for (const r of s.recurring) { if (r.intervalMonths == null) r.intervalMonths = 1; if (!('anchorYM' in r)) r.anchorYM = null; if (!r.bizAdjust) r.bizAdjust = 'none'; }
     if (!s.budgets) s.budgets = {}; if (!s.goals) s.goals = []; if (!s.wishlist) s.wishlist = []; if (!s.priceLogs) s.priceLogs = [];
-    if (s.budgetRollover == null) s.budgetRollover = false; if (!s.templates) s.templates = []; if (!s.readings) s.readings = {};
+    if (s.budgetRollover == null) s.budgetRollover = false; if (!s.templates) s.templates = []; if (!s.readings) s.readings = {}; for (const a of (s.accounts || [])) if (a.subtype === 'voucher_goods') { if (!a.goods) a.goods = { openingQty: 0 }; if (!a.goods.faceHistory) a.goods.faceHistory = []; }
     for (const w of s.wishlist) { if (!w.tags) w.tags = []; if (!w.status) w.status = 'active'; if (!('store' in w)) w.store = ''; if (!('url' in w)) w.url = ''; }
     for (const t of s.templates) { if (!t.padMode) t.padMode = 'calc'; }
     if (s.version == null || s.version < 7) s.version = 7; return s;

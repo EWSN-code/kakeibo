@@ -167,7 +167,8 @@
   function goodsQtyForEdit(accId) {
     return voucherSnapshotAt(accId, $('#f_date') ? $('#f_date').value : ui._date, ui.editId).qty;
   }
-  function voucherUnitCost(accId) { const snap = voucherSnapshotAt(accId, $('#f_date') ? $('#f_date').value : ui._date, ui.editId); return snap.qty > 0 ? snap.amount / snap.qty : 0; }
+  function voucherFaceUnitAt(accId, date) { const a = accById(accId); const hist = ((a && a.goods && a.goods.faceHistory) || []).filter(x => x && x.date && +x.unit > 0 && x.date <= date).sort((x,y)=>x.date.localeCompare(y.date)); return hist.length ? +hist[hist.length-1].unit : null; }
+  function voucherUnitCost(accId) { const date = $('#f_date') ? $('#f_date').value : (ui._date || M.todayStr()); const direct = voucherFaceUnitAt(accId, date); if (direct != null) return direct; const snap = voucherSnapshotAt(accId, date, ui.editId); return snap.qty > 0 ? snap.amount / snap.qty : 0; }
   function voucherCostAmount(c) { return (!c || !c.accId) ? 0 : yenRound(voucherUnitCost(c.accId) * (+c.qty || 0)); }
   function creditPayAmount(c) { if (!c || !c.accId) return 0; if (isVoucherGoodsAcc(c.accId)) return voucherCostAmount(c); const v = M.evalAmount(c.amt); return Number.isNaN(v) ? 0 : yenRound(v); }
   function creditAfterHint(c, singleAmount) {
@@ -180,7 +181,7 @@
       const useQ = +c.qty || 0;
       const amount = yenRound(unit * useQ);
       const editNote = ui.editId ? '（この取引の直前時点）' : '（入力日時点）';
-      return `額面根拠${editNote} ${yen(snap.amount)} ÷ ${snap.qty}枚 = ${yen(unit)}/枚 ・ 今回 ${useQ}枚 = ${yen(amount)} ・ 支払後 ${snap.qty-useQ}枚 / ${yen(snap.amount-amount)}`;
+      const direct = voucherFaceUnitAt(a.id, $('#f_date') ? $('#f_date').value : ui._date); const src = direct != null ? '額面履歴' : `残高 ÷ 枚数`; return `額面根拠${editNote} ${src}: ${direct != null ? yen(direct) + '/枚' : yen(snap.amount) + ' ÷ ' + snap.qty + '枚 = ' + yen(unit) + '/枚'} ・ 今回 ${useQ}枚 = ${yen(amount)} ・ 支払後 ${snap.qty-useQ}枚 / ${yen(snap.amount-amount)}`;
     }
     const amount = singleAmount != null ? singleAmount : creditPayAmount(c);
     const cur = accountBalanceForEdit(a.id);
