@@ -44,6 +44,7 @@
 
   let drill = { kind: 'net', parts: [], leaf: null };   // 既定=収支(net)
   let selected = new Set();
+let listCategoryFilter = null;
   let simSurplus = null;
   let wishFilter = { tag: null, status: 'active' };
   let priceOpen = new Set(), priceShowAll = new Set(), priceRange = {};
