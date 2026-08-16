@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<title>家計簿 v1.6.2g ― 複式簿記ハイブリッド</title>
+<title>家計簿 v1.6.2h ― 複式簿記ハイブリッド</title>
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
@@ -36,7 +36,7 @@
 <div class="app">
   <header class="top">
     <button class="hamburger" id="hamburger" title="メニュー">≡</button>
-    <div class="brand">家計簿 <small>v1.6.2g</small></div>
+    <div class="brand">家計簿 <small>v1.6.2h</small></div>
     <div class="cur-tab" id="curTabName"></div>
     <div class="spacer"></div>
     <div class="account-bar" id="accountBar"></div>
@@ -87,6 +87,7 @@
         <div class="field"><label>種別</label><select id="fltKind"></select></div>
         <div class="field" style="flex:2"><label>キーワード(店/支店/メモ/カテゴリ)</label><input id="fltText" placeholder="例: スーパー / 食材 / 家賃"></div>
         <div class="field"><label>並べ替え</label><select id="fltSort"><option value="date_desc">日付 新しい順</option><option value="date_asc">日付 古い順</option><option value="amount_desc">金額 大きい順</option><option value="amount_asc">金額 小さい順</option></select></div>
+        <button class="btn ghost sm" id="fltUncat">未分類だけ</button>
         <button class="btn ghost sm" id="fltClear">クリア</button>
       </div>
       <div id="bulkBar"></div>

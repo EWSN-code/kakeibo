@@ -1,4 +1,4 @@
-/* ============ Excelインポート（移行専用 v1.6.2g） ============ */
+/* ============ Excelインポート（移行専用 v1.6.2h） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -22,7 +22,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.6.2g）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.6.2h）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -37,7 +37,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.6.2g',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.6.2h',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);

@@ -34,7 +34,7 @@
 
   let ui = {};
   function resetEntryState() {
-    ui.editId = null; ui.editNextId = null;
+    ui.editId = null; ui.editNextId = null; ui.editPrevId = null; ui.editMove = null;
     ui.exp = { debits: [{ path: '', amt: '', ratio: '' }], credits: [{ accId: '', amt: '' }], detail: false, total: '', ratioMode: false };
     ui._store = ''; ui._branch = ''; ui._memo = ''; ui._date = ui._date || M.todayStr();
     ui._amt = ''; ui._catPath = ''; ui._accId = ''; ui._fromId = ''; ui._toId = '';
@@ -157,6 +157,7 @@ let listCategoryFilter = null;
   function refLabel(ref) { if (ref.startsWith('acc:')) return accName(ref.slice(4)); if (ref.startsWith('cat:')) return ref.slice(4).replace(/^exp>|^inc>/, '').split('>').join(' › '); return ref; }
   function accountOptions(filter, selected) { return accountsBy(a => !filter || filter(a)).map(a => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(a.name)}（${M.ACCOUNT_SUBTYPES[a.subtype].label}）</option>`).join(''); }
   function categoryOptions(kind, selected) { return M.flattenCategories(state.categories, kind).map(c => `<option value="${c.path}" ${c.path === selected ? 'selected' : ''}>${c.label}</option>`).join(''); }
+function ensureUncategorizedCategory() { const root = state.categories.expense || (state.categories.expense = {}); root['その他'] = root['その他'] || {}; root['その他']['未分類'] = root['その他']['未分類'] || []; return 'exp>その他>未分類'; }
   function refreshDatalists() { const stores = new Set(), branches = new Set(), items = new Set(); state.transactions.forEach(t => { if (t.store) stores.add(t.store); if (t.branch) branches.add(t.branch); }); (state.priceLogs || []).forEach(p => { if (p.item) items.add(p.item); if (p.store) stores.add(p.store); }); $('#dl-store').innerHTML = [...stores].map(s => `<option value="${esc(s)}">`).join(''); $('#dl-branch').innerHTML = [...branches].map(s => `<option value="${esc(s)}">`).join(''); $('#dl-item').innerHTML = [...items].map(s => `<option value="${esc(s)}">`).join(''); $('#dl-top').innerHTML = Object.keys(state.categories.expense).map(s => `<option value="${esc(s)}">`).join(''); }
 
   function currentYM() { return $('#ym').value || M.curYM(); }

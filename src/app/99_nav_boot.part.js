@@ -52,6 +52,7 @@
     $('#typebar').addEventListener('click', e => { if (e.target.dataset.type) { ui.type = e.target.dataset.type; renderEntry(); } });
     $('#ym').addEventListener('change', onMonthChange); $('#ymPrev').addEventListener('click', () => shiftMonth(-1)); $('#ymNext').addEventListener('click', () => shiftMonth(1)); $('#ymToday').addEventListener('click', () => { $('#ym').value = M.curYM(); onMonthChange(); });
     ['#fltYm', '#fltCat', '#fltKind', '#fltText', '#fltSort'].forEach(s => { const e=$(s); if(e)e.addEventListener('input', renderList); });
+    const fu=$('#fltUncat'); if(fu)fu.addEventListener('click',()=>{const p=ensureUncategorizedCategory(); listCategoryFilter={path:p,label:'その他 › 未分類'}; $('#fltYm').value=''; $('#fltCat').value=''; $('#fltKind').value=''; $('#fltText').value=''; renderList(); toast('未分類だけ表示します');});
     $('#fltClear').addEventListener('click', () => { listCategoryFilter = null; $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; if($('#fltSort')) $('#fltSort').value = 'date_desc'; renderList(); });
     $('#chkAll').addEventListener('change', e => { const rows = filteredRows(); if (e.target.checked) rows.forEach(r => selected.add(r.id)); else rows.forEach(r => selected.delete(r.id)); renderList(); });
     $('#drillKind').addEventListener('change', e => { drill.kind = e.target.value; drill.parts = []; drill.leaf = null; renderDrill(); });
