@@ -71,7 +71,7 @@
 const xlBtn=$('#importExcel'); if(xlBtn)xlBtn.addEventListener('click',()=>$('#excelFile').click()); const xlFile=$('#excelFile'); if(xlFile)xlFile.addEventListener('change',e=>{if(e.target.files[0])importExcel(e.target.files[0]); e.target.value='';});
     $('#loadDummy').addEventListener('click', () => { if (confirm('現在のデータをダミーデータで置き換えます。よろしいですか？')) { state = M.makeDummy(); selected.clear(); persist(); refreshDatalists(); renderAll(); switchTab('entry'); updateGlobalNotice(); toast('ダミーデータを投入しました'); } });
     $('#resetBtn').addEventListener('click', () => { if (confirm('全データを初期化します。よろしいですか？')) { state = M.initialState(); selected.clear(); persist(); refreshDatalists(); renderAll(); switchTab('entry'); updateGlobalNotice(); toast('初期化しました'); } });
-    $('#modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg') closeModal(); });
+    $('#modalBg').addEventListener('click', e => { if (e.target.id === 'modalBg' && !$('#modal').classList.contains('receipt-modal')) closeModal(); });
   }
   function boot() { $('#ym').value = M.curYM(); bind(); renderDrawer(); refreshDatalists(); switchTab('entry'); updateGlobalNotice(); persist(); }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot); else boot();

@@ -1,5 +1,5 @@
 {
-  "version": "v1.6.2a",
+  "version": "v1.6.2b",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
   "parts": [
@@ -9,7 +9,7 @@
     },
     {
       "file": "10_entry.part.js",
-      "description": "Entry and receipt input v2a"
+      "description": "Entry and receipt input v2b"
     },
     {
       "file": "20_list.part.js",
@@ -29,7 +29,7 @@
     },
     {
       "file": "60_settings_recurring.part.js",
-      "description": "Settings and category manager"
+      "description": "Settings, recurring and category manager"
     },
     {
       "file": "70_import_excel.part.js",
@@ -48,5 +48,5 @@
       "description": "Navigation boot"
     }
   ],
-  "bundle_sha256": "dbae7e0e1924a2efbdc4790c5cca530c89a9f2069978ad14506d436936887806"
+  "bundle_sha256": "5bf49876665a04b7a3445c201583972402b3113c05ecd58f8763cea8eba453d2"
 }
