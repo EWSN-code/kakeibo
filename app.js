@@ -44,7 +44,6 @@
 
   let drill = { kind: 'net', parts: [], leaf: null };   // 既定=収支(net)
   let selected = new Set();
-  let listCategoryFilter = null;
   let simSurplus = null;
   let wishFilter = { tag: null, status: 'active' };
   let priceOpen = new Set(), priceShowAll = new Set(), priceRange = {};
@@ -56,6 +55,8 @@
   function el(tag, attrs) { const e = document.createElement(tag); if (attrs) for (const k in attrs) { if (k === 'html') e.innerHTML = attrs[k]; else e.setAttribute(k, attrs[k]); } return e; }
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2000); }
   const yen = M.yen;
+  function yenRound(v) { return Math.round(Number(v) || 0); }
+  function evalYen(raw) { const v = M.evalAmount(raw); return Number.isNaN(v) ? NaN : yenRound(v); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   function isNarrow() { return window.matchMedia('(max-width:760px)').matches; }
 
@@ -203,46 +204,151 @@
   function renderDebits() { const area = $('#debitArea'); if (!area) return; const rm = ui.exp.ratioMode; area.innerHTML = ui.exp.debits.map((d, i) => `<div class="line-row" data-i="${i}"><div class="field cat"><select class="d_cat catsel">${categoryOptions('expense', d.path)}</select></div>${rm ? `<div class="field ratio"><input class="d_ratio" inputmode="decimal" value="${esc(d.ratio || '')}" placeholder="比" title="割合(重み)"></div>` : ''}<div class="field amt"><input class="d_amt" inputmode="decimal" value="${esc(d.amt)}" placeholder="0 (式可)"><div class="amt-eval d_eval"></div></div><div><button class="btn ghost sm d_del">✕</button></div></div>`).join(''); $$('.line-row', area).forEach(row => { const i = +row.dataset.i; const cat = row.querySelector('.d_cat'), amt = row.querySelector('.d_amt'), ev = row.querySelector('.d_eval'); if (ui.exp.debits[i].path) cat.value = ui.exp.debits[i].path; cat.addEventListener('change', () => ui.exp.debits[i].path = cat.value); amt.addEventListener('input', () => { ui.exp.debits[i].amt = amt.value; const raw = M.toHankaku(amt.value).trim(); ev.textContent = (!raw || /^\d+$/.test(raw)) ? '' : (Number.isNaN(M.evalAmount(amt.value)) ? '⚠ 式が不正' : '= ' + yen(M.evalAmount(amt.value))); recalcExpense(); }); const rat = row.querySelector('.d_ratio'); if (rat) rat.addEventListener('input', () => ui.exp.debits[i].ratio = rat.value); row.querySelector('.d_del').addEventListener('click', () => { syncExpFromDOM(); ui.exp.debits.splice(i, 1); if (!ui.exp.debits.length) ui.exp.debits.push({ path: '', amt: '', ratio: '' }); renderDebits(); recalcExpense(); }); }); attachHankakuAll(area); enhanceCatSelects(area); }
 
 
+  /* ---- レシートOCR解析 v2 ---- */
+  const RECEIPT_PROFILES = {
+    generic: { label: '汎用', discountWords: ['割引','値引','値引き','まとめ値引','アプリ月間割引'], ignoreWords: ['ボーナスポイント','ポイント','合計','小計','お預り','お釣り','釣銭','WAON','クレジット'] },
+    aeon: { label: 'イオン', discountWords: ['割引','まとめ値引','アプリ月間割引'], ignoreWords: ['ボーナスポイント','WAON','イオン','AEON','合計','小計','お預り','お釣り'] }
+  };
+  function receiptCategoryHint(name) {
+    const flat = M.flattenCategories(state.categories, 'expense');
+    const pick = words => flat.find(c => words.some(w => c.label.includes(w)))?.path || '';
+    if (/牛乳|チーズ|ヨーグルト|モッツレラ|カマンベール/.test(name)) return pick(['乳製品','食材','食費']);
+    if (/なす|ナス|ピーマン|野菜/.test(name)) return pick(['野菜','食材','食費']);
+    if (/焼魚|ちくわ|魚|練物/.test(name)) return pick(['魚','魚介','練物','食材','食費']);
+    if (/バゲット|パン|焼きいも|焼いも|おやつ/.test(name)) return pick(['パン','菓子','食材','食費']);
+    if (/歯ブラシ|デンタル|ゴキ|殺虫|洗剤|日用品/.test(name)) return pick(['日用品','衛生','雑費']);
+    return pick(['食材','食費']) || (flat[0]?.path || '');
+  }
+  function receiptTaxHint(name, markedReduced) {
+    if (markedReduced) return 8;
+    if (/牛乳|チーズ|ヨーグルト|モッツレラ|カマン|なす|ナス|ピーマン|焼魚|ちくわ|バゲット|パン|焼きいも|食品|食材/.test(name)) return 8;
+    if (/歯ブラシ|デンタル|ゴキ|殺虫|洗剤|日用品/.test(name)) return 10;
+    return '';
+  }
+  function receiptNumToken(tok) {
+    const raw = String(tok || '');
+    const markedReduced = /[※＊*]/.test(raw);
+    const s = M.toHankaku(raw).replace(/[※＊*]/g,'').replace(/[¥￥,，円]/g,'').trim();
+    if (!/^[+-]?\d+(?:\.\d+)?$/.test(s)) return null;
+    return { value: yenRound(+s), markedReduced };
+  }
+  function normalizeReceiptText(text) {
+    return M.toHankaku(String(text||''))
+      .replace(/[\r\n]+/g,' ')
+      .replace(/[（）()]/g,' ')
+      .replace(/([+-]?\d[\d,]*[※＊*]?)/g,' $1 ')
+      .replace(/(割引|値引き|値引|まとめ値引|アプリ月間割引|ボーナスポイント)/g,' $1 ')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+  function parseReceiptTextV2(text, profileKey) {
+    const prof = RECEIPT_PROFILES[profileKey] || RECEIPT_PROFILES.generic;
+    const tokens = normalizeReceiptText(text).split(' ').filter(Boolean);
+    const items = [];
+    let name = [];
+    let pendingDiscount = 0;
+    let ignoreUntilNextPrice = false;
+    const isDiscountWord = t => prof.discountWords.some(w => t.includes(w));
+    const isIgnoreWord = t => prof.ignoreWords.some(w => t.includes(w));
+    const flushNameAsNote = () => { name = []; };
+    for (let i=0;i<tokens.length;i++) {
+      const tok = tokens[i];
+      if (/^\d+%$/.test(tok)) continue;
+      if (/^P$|^\d+P$/i.test(tok)) { flushNameAsNote(); continue; }
+      if (/個|単|点|合計|小計/.test(tok) && !receiptNumToken(tok)) continue;
+      if (isIgnoreWord(tok)) { ignoreUntilNextPrice = /ボーナスポイント|ポイント/.test(tok); flushNameAsNote(); continue; }
+      if (isDiscountWord(tok)) { continue; }
+      const num = receiptNumToken(tok);
+      if (num) {
+        if (ignoreUntilNextPrice && num.value >= 0) { ignoreUntilNextPrice = false; continue; }
+        if (num.value < 0) {
+          if (name.length) pendingDiscount += num.value;
+          else if (items.length) items[items.length-1].discount += num.value;
+          continue;
+        }
+        if (name.length) {
+          const nm = name.join(' ').replace(/^[\-:：]+|[\-:：]+$/g,'').trim();
+          if (nm) {
+            const tax = receiptTaxHint(nm, num.markedReduced);
+            const discount = pendingDiscount;
+            const gross = num.value;
+            const item = { name:nm, gross, discount, taxRate:tax, category:receiptCategoryHint(nm), enabled:true };
+            item.net = yenRound(gross + discount);
+            items.push(item);
+          }
+          name = [];
+          pendingDiscount = 0;
+        }
+        continue;
+      }
+      if (/^[-+x×]$/.test(tok)) continue;
+      name.push(tok.replace(/[※＊*]/g,''));
+      if (name.length > 8) name.shift();
+    }
+    return items.filter(x => x.name && x.net !== 0);
+  }
+  function receiptEffectiveNet(item, taxMode, roundMode) {
+    const base = yenRound((+item.gross || 0) + (+item.discount || 0));
+    if (taxMode !== 'excluded') return base;
+    const rate = +item.taxRate || 10;
+    const raw = base * (1 + rate / 100);
+    if (roundMode === 'floor') return Math.floor(raw);
+    if (roundMode === 'ceil') return Math.ceil(raw);
+    return Math.round(raw);
+  }
+  function safeJsonParseLoose(text) {
+    const s = String(text||'').trim().replace(/^```(?:json)?/,'').replace(/```$/,'').trim();
+    return JSON.parse(s);
+  }
+  function receiptItemsFromAI(text) {
+    const obj = safeJsonParseLoose(text);
+    const arr = obj.items || obj.lines || [];
+    return arr.map(x => ({
+      name: String(x.name || x.item || '').trim(),
+      gross: yenRound(x.gross ?? x.price ?? x.amount ?? x.net ?? 0),
+      discount: yenRound(x.discount || 0),
+      net: yenRound(x.net ?? ((x.gross ?? x.price ?? x.amount ?? 0) + (x.discount || 0))),
+      taxRate: x.taxRate == null ? '' : +x.taxRate,
+      category: x.categoryHint || x.category || receiptCategoryHint(String(x.name || x.item || '')),
+      enabled: true
+    })).filter(x => x.name && x.net);
+  }
+  function buildReceiptAIPrompt(text) {
+    return `このレシート写真またはOCRテキストから、家計簿アプリに取り込むためのJSONだけを返してください。説明文やMarkdownは禁止です。\n\n抽出する項目:\n- 商品名 name\n- 元価格 gross\n- 割引額 discount（値引きは負数）\n- 実質金額 net\n- 税率候補 taxRate（8 / 10 / null）\n- カテゴリ候補 categoryHint（不明ならnull）\n\n注意:\n- ※や*が付いた商品は軽減税率8%候補です。\n- ボーナスポイントやポイント付与は明細から除外してください。\n- 割引は可能な限り該当商品に紐づけてください。\n- 合計が不明または合わない場合はwarningsに理由を書いてください。\n\n出力形式:\n{"items":[{"name":"","gross":0,"discount":0,"net":0,"taxRate":8,"categoryHint":null}],"warnings":[]}\n\nOCRテキスト:\n---\n${text}\n---`;
+  }
   function openReceiptInputModal() {
     syncExpFromDOM();
-    let rows = Array.from({ length: 5 }, () => ({ amount: '', cat: '', sel: true }));
     let pasteText = '';
-    let ignoreTotals = true;
-    let parseInfo = '';
-    const isBlankRow = r => !(String(r.amount || '').trim()) && !(String(r.cat || '').trim());
-    const shouldSkipReceiptLine = line => {
-      const raw = String(line || '').trim();
-      if (!ignoreTotals || !raw) return false;
-      if (/\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2}/.test(raw)) return true;
-      if (/\d{1,2}:\d{2}/.test(raw) && !/[¥￥円]/.test(raw)) return true;
-      return /(合計|小計|税込|税額|消費税|対象計|内税|外税|お預|預り|お釣|釣銭|現計|現金|クレジット|カード|電子マネー|ポイント|残高|領収|レシート|店番|登録番号|TEL|電話|担当|釣)/.test(raw);
+    let aiText = '';
+    let profile = 'aeon';
+    let taxMode = 'included';
+    let roundMode = 'round';
+    let items = [];
+    const total = () => items.filter(x=>x.enabled).reduce((s,x)=>s+receiptEffectiveNet(x,taxMode,roundMode),0);
+    const sync = () => {
+      const pt=$('#ri_paste'); if(pt) pasteText=pt.value;
+      const ai=$('#ri_ai'); if(ai) aiText=ai.value;
+      const pr=$('#ri_profile'); if(pr) profile=pr.value;
+      const tm=$('#ri_taxMode'); if(tm) taxMode=tm.value;
+      const rm=$('#ri_round'); if(rm) roundMode=rm.value;
+      $$('#ri_items tr[data-i]').forEach(tr=>{const i=+tr.dataset.i; const it=items[i]; if(!it)return; it.enabled=tr.querySelector('.ri_on').checked; it.name=tr.querySelector('.ri_name').value; it.gross=evalYen(tr.querySelector('.ri_gross').value); it.discount=evalYen(tr.querySelector('.ri_disc').value); it.taxRate=tr.querySelector('.ri_tax').value; it.category=tr.querySelector('.ri_cat').value; it.net=yenRound((Number.isNaN(it.gross)?0:it.gross)+(Number.isNaN(it.discount)?0:it.discount));});
     };
-    const extractAmount = line => {
-      const raw = M.toHankaku(String(line || '')).replace(/[，,]/g, '');
-      if (shouldSkipReceiptLine(raw)) return null;
-      const ms = [...raw.matchAll(/[¥￥]?\s*([+-]?\d+(?:\.\d+)?)(?:\s*円)?/g)].map(m => m[1]);
-      if (!ms.length) return null;
-      const n = ms[ms.length - 1];
-      if (/^(20\d{2}|19\d{2})$/.test(n) && !/[¥￥円]/.test(raw)) return null;
-      return n;
-    };
-    const parseLines = text => { const lines = String(text || '').split(/\n+/); const out=[]; let skipped=0; lines.forEach(line=>{ const amount=extractAmount(line); if(amount) out.push({amount,cat:'',sel:true}); else if(line.trim()) skipped++; }); parseInfo = out.length ? `${out.length}行を読み取りました${skipped ? `（無視 ${skipped}行）` : ''}` : (skipped ? `${skipped}行を確認しましたが金額候補はありません` : ''); return out; };
-    const total = () => rows.reduce((sum, r) => { const v = M.evalAmount(r.amount); return sum + (Number.isNaN(v) ? 0 : v); }, 0);
-    const syncRows = () => { $$('#ri_rows tr[data-i]').forEach(tr => { const i = +tr.dataset.i; rows[i].sel = tr.querySelector('.ri_sel').checked; rows[i].amount = tr.querySelector('.ri_amt').value; rows[i].cat = tr.querySelector('.ri_cat').value; }); const pt = $('#ri_paste'); if (pt) pasteText = pt.value; const ig = $('#ri_ignoreTotals'); if (ig) ignoreTotals = ig.checked; };
     const draw = () => {
-      $('#modal').innerHTML = `<h3>OSコピペ / レシート金額入力</h3><p class="hint">iPhoneのOCRやメモアプリから貼り付けたテキストから金額だけを抽出します。品目名は扱わず、選択行にカテゴリを一括設定して明細へ反映します。</p><div class="field"><label>貼り付けテキスト</label><textarea id="ri_paste" rows="5" placeholder="牛乳 238\n卵 298\n洗剤 398">${esc(pasteText)}</textarea></div><label class="hint" style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="ri_ignoreTotals" ${ignoreTotals ? 'checked' : ''} style="width:auto"> 合計/小計/税/支払/お釣りっぽい行を無視</label><div class="row" style="gap:6px"><button class="btn ghost sm" id="ri_clip">クリップボード読込</button><button class="btn ghost sm" id="ri_parseReplace">貼り付けで置換</button><button class="btn ghost sm" id="ri_parse">貼り付けから行追加</button><button class="btn ghost sm" id="ri_add">＋行追加</button><button class="btn ghost sm" id="ri_selectAll">全選択</button><button class="btn ghost sm" id="ri_remove">選択行を削除</button></div><div class="acc-sub" id="ri_parseInfo" style="margin-top:6px">${esc(parseInfo)}</div><div class="row" style="gap:6px;margin-top:8px"><div class="field" style="flex:2;margin:0"><label>選択行にカテゴリ設定</label><select id="ri_bulk" class="catsel"><option value="">カテゴリを選択</option>${categoryOptions('expense')}</select></div><button class="btn ghost sm" id="ri_applyCat" style="align-self:end">選択行へ設定</button></div><div class="excel-tablewrap" style="margin-top:10px"><table><thead><tr><th style="width:42px">選択</th><th>金額</th><th>カテゴリ</th></tr></thead><tbody id="ri_rows">${rows.map((r,i)=>`<tr data-i="${i}"><td><input class="ri_sel" type="checkbox" ${r.sel?'checked':''} style="width:auto"></td><td><input class="ri_amt no-amount-pad" inputmode="decimal" value="${esc(r.amount)}" placeholder="0"></td><td><select class="ri_cat catsel"><option value="">未分類</option>${categoryOptions('expense', r.cat)}</select></td></tr>`).join('')}</tbody></table></div><div class="totline"><span>入力合計</span><span class="v" id="ri_total">${yen(total())}</span></div><div class="balance-warn" id="ri_warn"></div><div class="actions"><button class="btn ghost" id="ri_cancel">キャンセル</button><button class="btn" id="ri_commit">明細へ反映</button></div>`;
-      enhanceCatSelects($('#modal')); const upd = () => { syncRows(); $('#ri_total').textContent = yen(total()); };
-      $$('#ri_rows input, #ri_rows select').forEach(el => el.addEventListener('input', upd)); $('#ri_paste').addEventListener('input', () => pasteText = $('#ri_paste').value); $('#ri_ignoreTotals').addEventListener('change', syncRows);
-      $('#ri_clip').addEventListener('click', async () => { try { if (!navigator.clipboard || !navigator.clipboard.readText) return toast('この環境ではクリップボード読込に対応していません'); pasteText = await navigator.clipboard.readText(); draw(); } catch(e) { toast('クリップボードを読めませんでした'); } });
-      $('#ri_parseReplace').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = parsed; pasteText = ''; draw(); });
-      $('#ri_parse').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = rows.filter(r => !isBlankRow(r)).concat(parsed); pasteText = ''; draw(); });
-      $('#ri_add').addEventListener('click', () => { syncRows(); rows.push({ amount: '', cat: '', sel: true }); draw(); }); $('#ri_selectAll').addEventListener('click', () => { syncRows(); const all = rows.some(r => !r.sel); rows.forEach(r => r.sel = all); draw(); }); $('#ri_remove').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !r.sel); if (!rows.length) rows.push({ amount: '', cat: '', sel: true }); draw(); });
-      $('#ri_applyCat').addEventListener('click', () => { syncRows(); const cat = $('#ri_bulk').value; if (!cat) return toast('カテゴリを選んでください'); rows.forEach(r => { if (r.sel) r.cat = cat; }); draw(); }); $('#ri_cancel').addEventListener('click', closeModal);
-      $('#ri_commit').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !isBlankRow(r)); const valid = rows.map(r => ({ ...r, value: M.evalAmount(r.amount) })).filter(r => r.amount !== '' && !Number.isNaN(r.value) && r.value); if (!valid.length) return toast('金額を1行以上入力してください'); const uncategorized = valid.filter(r => !r.cat); if (uncategorized.length) { $('#ri_warn').textContent = `未分類の金額行が ${uncategorized.length} 件あります。カテゴリを設定してください。`; return; } const agg = new Map(); valid.forEach(r => agg.set(r.cat, (agg.get(r.cat) || 0) + r.value)); ui.exp.debits = [...agg.entries()].map(([path, amount]) => ({ path, amt: String(Math.round(amount)), ratio: '' })); ui.exp.total = String(Math.round(valid.reduce((sum, r) => sum + r.value, 0))); closeModal(); renderEntry(); toast(`${valid.length}行を${ui.exp.debits.length}カテゴリに集約しました ✓`); });
+      $('#modal').innerHTML = `<h3>レシートOCR解析 v2</h3><p class="hint">商品名・元価格・割引・税率候補を解析します。※/*付き価格は軽減税率8%候補として扱います。解析後に手修正してから明細へ反映できます。</p><div class="row" style="gap:8px"><div class="field"><label>店別ルール</label><select id="ri_profile"><option value="aeon" ${profile==='aeon'?'selected':''}>イオン</option><option value="generic" ${profile==='generic'?'selected':''}>汎用</option></select></div><div class="field"><label>税モード</label><select id="ri_taxMode"><option value="included" ${taxMode==='included'?'selected':''}>税込として読む</option><option value="excluded" ${taxMode==='excluded'?'selected':''}>外税を加算</option></select></div><div class="field"><label>外税端数</label><select id="ri_round"><option value="round" ${roundMode==='round'?'selected':''}>四捨五入</option><option value="floor" ${roundMode==='floor'?'selected':''}>切り捨て</option><option value="ceil" ${roundMode==='ceil'?'selected':''}>切り上げ</option></select></div></div><div class="field"><label>OCR貼り付けテキスト</label><textarea id="ri_paste" rows="5" placeholder="レシートOCRテキストを貼り付け">${esc(pasteText)}</textarea></div><div class="row" style="gap:6px"><button class="btn ghost sm" id="ri_parseV2">解析する</button><button class="btn ghost sm" id="ri_prompt">AI用プロンプトをコピー</button></div><details style="margin-top:8px"><summary>AI解析結果JSONを貼り付け</summary><div class="field"><label>AI返答JSON</label><textarea id="ri_ai" rows="5" placeholder='{"items":[...] }'>${esc(aiText)}</textarea></div><button class="btn ghost sm" id="ri_applyAI">AI結果を読み込む</button></details><div class="excel-tablewrap" style="margin-top:10px;max-height:42vh;overflow:auto"><table><thead><tr><th>使う</th><th>商品名</th><th>元価格</th><th>割引</th><th>税率</th><th>実質</th><th>カテゴリ</th></tr></thead><tbody id="ri_items">${items.map((it,i)=>`<tr data-i="${i}"><td><input class="ri_on" type="checkbox" ${it.enabled?'checked':''} style="width:auto"></td><td><input class="ri_name" value="${esc(it.name)}"></td><td><input class="ri_gross no-amount-pad" inputmode="decimal" value="${esc(it.gross)}"></td><td><input class="ri_disc no-amount-pad" inputmode="decimal" value="${esc(it.discount||0)}"></td><td><select class="ri_tax"><option value="" ${it.taxRate===''?'selected':''}>不明</option><option value="8" ${+it.taxRate===8?'selected':''}>8%</option><option value="10" ${+it.taxRate===10?'selected':''}>10%</option><option value="0" ${+it.taxRate===0?'selected':''}>0%</option></select></td><td class="num">${yen(receiptEffectiveNet(it,taxMode,roundMode))}</td><td><select class="ri_cat catsel"><option value="">未分類</option>${categoryOptions('expense', it.category)}</select></td></tr>`).join('') || '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">解析結果がありません</td></tr>'}</tbody></table></div><div class="totline"><span>反映合計</span><span class="v" id="ri_total">${yen(total())}</span></div><div class="row" style="gap:6px;margin-top:8px"><select id="ri_bulk" class="catsel"><option value="">選択行にカテゴリ設定</option>${categoryOptions('expense')}</select><button class="btn ghost sm" id="ri_applyCat">設定</button></div><div class="balance-warn" id="ri_warn"></div><div class="actions"><button class="btn ghost" id="ri_cancel">キャンセル</button><button class="btn" id="ri_commit">明細へ反映</button></div>`;
+      enhanceCatSelects($('#modal'));
+      ['#ri_profile','#ri_taxMode','#ri_round'].forEach(s=>$(s).addEventListener('change',()=>{sync();draw();}));
+      $('#ri_paste').addEventListener('input',()=>pasteText=$('#ri_paste').value);
+      const upd=()=>{sync();draw();};
+      $$('#ri_items input, #ri_items select').forEach(el=>el.addEventListener('change',upd));
+      $('#ri_parseV2').addEventListener('click',()=>{sync();items=parseReceiptTextV2(pasteText,profile); if(!items.length)toast('明細候補を読み取れませんでした'); draw();});
+      $('#ri_prompt').addEventListener('click',async()=>{sync();const prompt=buildReceiptAIPrompt(pasteText); try{await navigator.clipboard.writeText(prompt); toast('AI用プロンプトをコピーしました');}catch(e){$('#ri_warn').textContent='コピーできませんでした。プロンプト: '+prompt;}});
+      $('#ri_applyAI').addEventListener('click',()=>{sync();try{items=receiptItemsFromAI(aiText); if(!items.length)return toast('AI結果にitemsがありません'); draw();}catch(e){toast('AI結果JSONを読めません: '+e.message);}});
+      $('#ri_applyCat').addEventListener('click',()=>{sync();const cat=$('#ri_bulk').value;if(!cat)return toast('カテゴリを選んでください');items.forEach(it=>{if(it.enabled)it.category=cat;});draw();});
+      $('#ri_cancel').addEventListener('click',closeModal);
+      $('#ri_commit').addEventListener('click',()=>{sync();const valid=items.filter(x=>x.enabled&&x.name&&receiptEffectiveNet(x,taxMode,roundMode)>0);if(!valid.length)return toast('反映する明細がありません');const missing=valid.filter(x=>!x.category);if(missing.length){$('#ri_warn').textContent=`未分類の明細が ${missing.length} 件あります。カテゴリを設定してください。`;return;}const agg=new Map();valid.forEach(x=>{const amt=receiptEffectiveNet(x,taxMode,roundMode);agg.set(x.category,(agg.get(x.category)||0)+amt);});ui.exp.debits=[...agg.entries()].map(([path,amount])=>({path,amt:String(yenRound(amount)),ratio:''}));ui.exp.total=String(yenRound([...agg.values()].reduce((s,x)=>s+x,0)));closeModal();renderEntry();toast(`${valid.length}明細を${ui.exp.debits.length}カテゴリに集約しました ✓`);});
     };
     draw(); showModal();
   }
-
   function renderAllocTools() { const box = $('#allocTools'); if (!box) return; box.innerHTML = `<span class="lbl">按分:</span><button class="btn ghost sm" id="allocRest">残額を最終行へ</button><button class="btn ghost sm" id="allocEven">均等割り</button><label class="lbl" style="display:flex;align-items:center;gap:4px;margin:0"><input type="checkbox" id="ratioToggle" ${ui.exp.ratioMode ? 'checked' : ''} style="width:auto"> 割合入力</label>${ui.exp.ratioMode ? `<button class="btn ghost sm" id="allocRatio">割合で配分</button>` : ''}<button class="btn ghost sm" id="allocDup">前回この店の構成を複製</button>`; $('#allocRest').addEventListener('click', () => { syncExpFromDOM(); const tv = M.evalAmount(ui.exp.total); if (!ui.exp.total || Number.isNaN(tv)) return toast('購入合計を入れてください'); let sum = 0; for (let i = 0; i < ui.exp.debits.length - 1; i++) { const v = M.evalAmount(ui.exp.debits[i].amt); sum += Number.isNaN(v) ? 0 : v; } ui.exp.debits[ui.exp.debits.length - 1].amt = String(Math.round(tv - sum)); renderDebits(); recalcExpense(); }); $('#allocEven').addEventListener('click', () => { syncExpFromDOM(); const tv = M.evalAmount(ui.exp.total); if (!ui.exp.total || Number.isNaN(tv)) return toast('購入合計を入れてください'); const n = ui.exp.debits.length; const base = Math.floor(tv / n); const rem = tv - base * n; ui.exp.debits.forEach((d, i) => d.amt = String(base + (i < rem ? 1 : 0))); renderDebits(); recalcExpense(); }); $('#ratioToggle').addEventListener('change', e => { syncExpFromDOM(); ui.exp.ratioMode = e.target.checked; renderDebits(); renderAllocTools(); recalcExpense(); }); const ar = $('#allocRatio'); if (ar) ar.addEventListener('click', () => { syncExpFromDOM(); const tv = M.evalAmount(ui.exp.total); if (!ui.exp.total || Number.isNaN(tv)) return toast('購入合計を入れてください'); const weights = ui.exp.debits.map(d => { const w = M.evalAmount(d.ratio); return Number.isNaN(w) ? 0 : w; }); const wsum = weights.reduce((s, w) => s + w, 0); if (wsum <= 0) return toast('割合(重み)を入力してください'); let acc = 0; ui.exp.debits.forEach((d, i) => { if (i === ui.exp.debits.length - 1) d.amt = String(Math.round(tv - acc)); else { const v = Math.round(tv * weights[i] / wsum); d.amt = String(v); acc += v; } }); renderDebits(); recalcExpense(); }); $('#allocDup').addEventListener('click', () => { syncExpFromDOM(); const store = ui._store || ($('#f_store') ? $('#f_store').value : ''); if (!store) return toast('先に店名を入れてください'); const comp = M.lastStoreComposition(state, store); if (!comp) return toast('この店の過去の支出構成が見つかりません'); ui.exp.debits = comp.items.map(it => ({ path: it.catPath, amt: String(it.amount), ratio: '' })); renderDebits(); recalcExpense(); toast(`前回(${comp.date})の${comp.items.length}明細を複製しました`); }); }
   function renderCreditsExp() { const area = $('#creditArea'); if (!area) return; const opts = sel => accountOptions(a => a.subtype !== 'voucher_goods', sel); if (!ui.exp.detail) { const sel = ui.exp.credits[0] ? ui.exp.credits[0].accId : ''; area.innerHTML = `<div class="field"><label>支払手段（どこから）</label><select id="c_single">${opts(sel)}</select></div>`; return; } area.innerHTML = `<label>支払手段の内訳（貸方・複数可／カードのポイント払いもここで）</label>` + ui.exp.credits.map((c, i) => `<div class="credit-line" data-i="${i}"><div class="field" style="flex:2"><select class="c_acc">${opts(c.accId)}</select></div><div class="field amt"><input class="c_amt" inputmode="decimal" placeholder="金額(式可)" value="${esc(c.amt)}"></div><button class="btn ghost sm c_del">✕</button></div>`).join('') + `<button class="btn ghost sm" id="addCredit">＋貸方を追加</button>`; $$('.credit-line', area).forEach(line => { const i = +line.dataset.i; const acc = line.querySelector('.c_acc'), amt = line.querySelector('.c_amt'); acc.addEventListener('change', () => ui.exp.credits[i].accId = acc.value); amt.addEventListener('input', () => { ui.exp.credits[i].amt = amt.value; recalcExpense(); }); line.querySelector('.c_del').addEventListener('click', () => { syncExpFromDOM(); ui.exp.credits.splice(i, 1); if (!ui.exp.credits.length) ui.exp.credits.push({ accId: '', amt: '' }); renderCreditsExp(); recalcExpense(); }); }); $('#addCredit').addEventListener('click', () => { syncExpFromDOM(); ui.exp.credits.push({ accId: '', amt: '' }); renderCreditsExp(); recalcExpense(); }); attachHankakuAll(area); }
   function syncExpFromDOM() { $$('#debitArea .line-row').forEach(row => { const i = +row.dataset.i; const rat = row.querySelector('.d_ratio'); ui.exp.debits[i] = { path: row.querySelector('.d_cat').value, amt: row.querySelector('.d_amt').value, ratio: rat ? rat.value : (ui.exp.debits[i] ? ui.exp.debits[i].ratio : '') }; }); if (!ui.exp.detail) { const s = $('#c_single'); if (s) ui.exp.credits = [{ accId: s.value, amt: '' }]; } else $$('#creditArea .credit-line').forEach(line => { const i = +line.dataset.i; ui.exp.credits[i] = { accId: line.querySelector('.c_acc').value, amt: line.querySelector('.c_amt').value }; }); if ($('#f_total')) ui.exp.total = $('#f_total').value; if ($('#f_store')) ui._store = $('#f_store').value; if ($('#f_branch')) ui._branch = $('#f_branch').value; if ($('#f_date')) ui._date = $('#f_date').value; if ($('#f_memo')) ui._memo = $('#f_memo').value; }
@@ -264,13 +370,13 @@
         const rows = ui.exp.debits.filter(d => d.path);
         const parsed = rows.map(d => ({ catPath: d.path, raw: (d.amt || '').trim(), amount: M.evalAmount(d.amt) }));
         const invalid = parsed.filter(p => p.raw !== '' && Number.isNaN(p.amount));
-        const validItems = parsed.filter(p => p.raw !== '' && !Number.isNaN(p.amount) && p.amount);
+        parsed.forEach(p => { if (!Number.isNaN(p.amount)) p.amount = yenRound(p.amount); }); const validItems = parsed.filter(p => p.raw !== '' && !Number.isNaN(p.amount) && p.amount);
         if (!validItems.length) return toast('金額のある明細を1行以上入力してください');
         if (invalid.length) { if (!confirm(`⚠ 不正な金額の明細が ${invalid.length}件あります（例: "${invalid[0].raw}"）。\nその行を除いて登録しますか？`)) return; }
         const items = validItems.map(p => ({ catPath: p.catPath, amount: p.amount }));
         const dsum = items.reduce((s, it) => s + it.amount, 0);
         let credits;
-        if (ui.exp.detail) { const cInvalid = ui.exp.credits.filter(c => c.accId && (c.amt || '').trim() !== '' && Number.isNaN(M.evalAmount(c.amt))); if (cInvalid.length) { if (!confirm(`⚠ 支払手段に不正な金額があります。その行を除いて登録しますか？`)) return; } credits = ui.exp.credits.map(c => ({ accId: c.accId, amount: M.evalAmount(c.amt) })).filter(c => c.accId && c.amount && !Number.isNaN(c.amount)); const cs = credits.reduce((s, c) => s + c.amount, 0); if (Math.abs(cs - dsum) > 0.5) return toast(`貸方合計 ${yen(cs)} が明細合計 ${yen(dsum)} と一致しません`); } else { const accId = $('#c_single').value; if (!accId) return toast('支払手段を選んでください'); credits = [{ accId, amount: dsum }]; }
+        if (ui.exp.detail) { const cInvalid = ui.exp.credits.filter(c => c.accId && (c.amt || '').trim() !== '' && Number.isNaN(M.evalAmount(c.amt))); if (cInvalid.length) { if (!confirm(`⚠ 支払手段に不正な金額があります。その行を除いて登録しますか？`)) return; } credits = ui.exp.credits.map(c => ({ accId: c.accId, amount: evalYen(c.amt) })).filter(c => c.accId && c.amount && !Number.isNaN(c.amount)); const cs = credits.reduce((s, c) => s + c.amount, 0); if (Math.abs(cs - dsum) > 0.5) return toast(`貸方合計 ${yen(cs)} が明細合計 ${yen(dsum)} と一致しません`); } else { const accId = $('#c_single').value; if (!accId) return toast('支払手段を選んでください'); credits = [{ accId, amount: dsum }]; }
         t = M.buildExpense({ id, date, items, credits, store, branch, memo });
       }
       else if (type === 'income') { const amount = M.evalAmount($('#f_amount').value); if (!amount || Number.isNaN(amount)) return toast('金額を確認してください'); t = M.buildIncome({ id, date, accId: $('#f_acc').value, catPath: $('#f_cat').value, amount, store, branch, memo }); }
@@ -304,13 +410,11 @@
   /* ============ 取引一覧 ============ */
   const KIND_TAG = { expense: ['exp', '支出'], income: ['inc', '収入'], transfer: ['mv', '振替'], card_payment: ['mv', 'カード引落'], prepaid_amount: ['mv', '前払(金)'], prepaid_goods: ['mv', '前払(物)'], goods_use: ['exp', '現物利用'], generic: ['mv', '—'] };
   function txPositiveAmount(t) { return t.lines.filter(l => l.amount > 0).reduce((sum, l) => sum + l.amount, 0); }
-  function txHasCategory(t, path) { const full = 'cat:' + path, pref = full + '>'; return t.lines.some(l => l.ref === full || l.ref.startsWith(pref)); }
-  function filteredRows() { const ym = $('#fltYm').value, catTop = $('#fltCat').value, kind = $('#fltKind').value, kw = ($('#fltText').value || '').trim(), sort = ($('#fltSort') ? $('#fltSort').value : 'date_desc'); let rows = state.transactions.slice(); if (ym) rows = rows.filter(t => t.date.startsWith(ym)); if (listCategoryFilter) rows = rows.filter(t => txHasCategory(t, listCategoryFilter.path)); else if (catTop) rows = rows.filter(t => t.lines.some(l => l.ref.startsWith('cat:') && l.ref.includes('>' + catTop))); if (kind) rows = rows.filter(t => t.kind === kind); if (kw) rows = rows.filter(t => { const catText = t.lines.filter(l => l.ref.startsWith('cat:')).map(l => l.ref.slice(4)).join(' '); return (t.store + ' ' + t.branch + ' ' + t.memo + ' ' + catText).includes(kw); }); const cmpDateAsc = (a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id); const cmpAmtAsc = (a,b)=>txPositiveAmount(a)-txPositiveAmount(b)||cmpDateAsc(a,b); rows.sort((a,b)=> sort==='date_asc'?cmpDateAsc(a,b):sort==='amount_desc'?cmpAmtAsc(b,a):sort==='amount_asc'?cmpAmtAsc(a,b):cmpDateAsc(b,a)); return rows; }
+  function filteredRows() { const ym = $('#fltYm').value, catTop = $('#fltCat').value, kind = $('#fltKind').value, kw = ($('#fltText').value || '').trim(), sort = ($('#fltSort') ? $('#fltSort').value : 'date_desc'); let rows = state.transactions.slice(); if (ym) rows = rows.filter(t => t.date.startsWith(ym)); if (catTop) rows = rows.filter(t => t.lines.some(l => l.ref.startsWith('cat:') && l.ref.includes('>' + catTop))); if (kind) rows = rows.filter(t => t.kind === kind); if (kw) rows = rows.filter(t => { const catText = t.lines.filter(l => l.ref.startsWith('cat:')).map(l => l.ref.slice(4)).join(' '); return (t.store + ' ' + t.branch + ' ' + t.memo + ' ' + catText).includes(kw); }); const cmpDateAsc = (a,b)=>a.date.localeCompare(b.date)||a.id.localeCompare(b.id); const cmpAmtAsc = (a,b)=>txPositiveAmount(a)-txPositiveAmount(b)||cmpDateAsc(a,b); rows.sort((a,b)=> sort==='date_asc'?cmpDateAsc(a,b):sort==='amount_desc'?cmpAmtAsc(b,a):sort==='amount_asc'?cmpAmtAsc(a,b):cmpDateAsc(b,a)); return rows; }
   function renderList() {
     if (!$('#fltKind').dataset.filled) { $('#fltKind').innerHTML = `<option value="">すべて</option>` + Object.entries(KIND_TAG).filter(([k]) => k !== 'generic').map(([k, v]) => `<option value="${k}">${v[1]}</option>`).join(''); $('#fltKind').dataset.filled = '1'; }
     if (!$('#fltCat').dataset.filled) { const tops = [...new Set(Object.keys(state.categories.expense).concat(Object.keys(state.categories.income)))]; $('#fltCat').innerHTML = `<option value="">すべて</option>` + tops.map(t => `<option>${t}</option>`).join(''); $('#fltCat').dataset.filled = '1'; }
     const rows = filteredRows(); const rowIds = new Set(rows.map(r => r.id)); selected.forEach(id => { if (!rowIds.has(id)) selected.delete(id); });
-    if (listCategoryFilter) { $('#bulkBar').innerHTML = `<div class="bulkbar"><span class="cnt">カテゴリ: ${esc(listCategoryFilter.label)} で絞込中</span><span class="spacer"></span><button class="btn ghost sm" id="catFilterClear">絞込解除</button></div>`; $('#catFilterClear').addEventListener('click', () => { listCategoryFilter = null; renderList(); }); }
     const tbody = $('#txTable tbody');
     tbody.innerHTML = rows.map(t => { const debit = t.lines.filter(l => l.amount > 0).map(l => refLabel(l.ref)).join(', '); const credit = t.lines.filter(l => l.amount < 0).map(l => refLabel(l.ref) + (l.qty ? `(${-l.qty}枚)` : '')).join(' + '); const amt = t.lines.filter(l => l.amount > 0).reduce((s, l) => s + l.amount, 0); const [cls, lab] = KIND_TAG[t.kind] || KIND_TAG.generic; return `<tr class="${selected.has(t.id) ? 'sel' : ''}" data-id="${t.id}"><td class="chk"><input type="checkbox" class="rowchk" ${selected.has(t.id) ? 'checked' : ''}></td><td>${t.date}</td><td><span class="tag ${cls}">${lab}</span></td><td>${esc(debit)}</td><td class="muted">${esc(credit)}</td><td>${esc(t.store)}${t.branch ? ' <span class="muted">/ ' + esc(t.branch) + '</span>' : ''}</td><td class="num">${yen(amt)}</td><td style="white-space:nowrap"><button class="btn ghost sm" data-edit="${t.id}">編集</button> <button class="btn danger sm" data-del="${t.id}">削除</button></td></tr>`; }).join('') || `<tr><td colspan="8" class="muted" style="text-align:center; padding:20px">取引がありません</td></tr>`;
     $$('.rowchk', tbody).forEach(chk => chk.addEventListener('change', e => { const id = e.target.closest('tr').dataset.id; if (e.target.checked) selected.add(id); else selected.delete(id); e.target.closest('tr').classList.toggle('sel', e.target.checked); renderBulkBar(); syncChkAll(rows); }));
@@ -318,10 +422,9 @@
     $$('[data-edit]', tbody).forEach(b => b.addEventListener('click', () => loadForEdit(b.dataset.edit)));
     syncChkAll(rows); renderBulkBar();
   }
-  function gotoListWithKeyword(kw) { listCategoryFilter = null; switchTab('list'); $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = kw; renderList(); toast(`「${kw}」で取引を検索`); }
-  function gotoListWithCategory(path, label) { listCategoryFilter = { path, label: label || path.replace(/^exp>|^inc>/, '').split('>').join(' › ') }; switchTab('list'); $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; renderList(); toast(`カテゴリ「${listCategoryFilter.label}」で絞り込みました`); }
+  function gotoListWithKeyword(kw) { switchTab('list'); $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = kw; renderList(); toast(`「${kw}」で取引を検索`); }
   function syncChkAll(rows) { const all = $('#chkAll'); if (!all) return; const n = rows.length; const sel = rows.filter(r => selected.has(r.id)).length; all.checked = n > 0 && sel === n; all.indeterminate = sel > 0 && sel < n; }
-  function renderBulkBar() { const bar = $('#bulkBar'); if (!bar) return; if (!selected.size) { if (!listCategoryFilter) bar.innerHTML = ''; return; } bar.innerHTML = `<div class="bulkbar"><span class="cnt">${selected.size}件を選択中</span><span class="spacer"></span><button class="btn ghost sm" id="bulkRecat">カテゴリを付け替え</button><button class="btn danger sm" id="bulkDel">一括削除</button><button class="btn ghost sm" id="bulkClear">選択解除</button></div>`; $('#bulkClear').addEventListener('click', () => { selected.clear(); renderList(); }); $('#bulkDel').addEventListener('click', () => { if (!confirm(`選択した ${selected.size}件を削除します。よろしいですか？`)) return; state.transactions = state.transactions.filter(t => !selected.has(t.id)); selected.clear(); persist(); renderList(); renderAccounts(); renderReport(); renderCards(); renderDrill(); renderBudget(); toast('一括削除しました ✓'); }); $('#bulkRecat').addEventListener('click', openBulkRecatModal); }
+  function renderBulkBar() { const bar = $('#bulkBar'); if (!bar) return; if (!selected.size) { bar.innerHTML = ''; return; } bar.innerHTML = `<div class="bulkbar"><span class="cnt">${selected.size}件を選択中</span><span class="spacer"></span><button class="btn ghost sm" id="bulkRecat">カテゴリを付け替え</button><button class="btn danger sm" id="bulkDel">一括削除</button><button class="btn ghost sm" id="bulkClear">選択解除</button></div>`; $('#bulkClear').addEventListener('click', () => { selected.clear(); renderList(); }); $('#bulkDel').addEventListener('click', () => { if (!confirm(`選択した ${selected.size}件を削除します。よろしいですか？`)) return; state.transactions = state.transactions.filter(t => !selected.has(t.id)); selected.clear(); persist(); renderList(); renderAccounts(); renderReport(); renderCards(); renderDrill(); renderBudget(); toast('一括削除しました ✓'); }); $('#bulkRecat').addEventListener('click', openBulkRecatModal); }
   function openBulkRecatModal() {
     const ids = [...selected]; const targets = state.transactions.filter(t => ids.includes(t.id)); const fromSet = new Map();
     targets.forEach(t => t.lines.forEach(l => { if (l.ref.startsWith('cat:exp>')) { const p = l.ref.slice(4); fromSet.set(p, (fromSet.get(p) || 0) + 1); } }));
@@ -454,7 +557,7 @@
 
   /* ============ レポート ============ */
 
-  /* ============ 分析 v1.6：期間選択 ============ */
+  /* ============ 分析 v1.6.2：期間選択 ============ */
   function analysisPeriod() {
     const base = currentYM();
     const mode = ($('#drillRange') ? $('#drillRange').value : 'month') || 'month';
@@ -529,35 +632,19 @@
   function renderSettingsTabs() { const host = $('#settingsSubtabs'); if (!host) return; $$('#settingsSubtabs button').forEach(b => b.classList.toggle('active', b.dataset.setting === settingsSection)); $$('[data-setting-panel]', $('#tab-settings')).forEach(p => p.hidden = p.dataset.settingPanel !== settingsSection); }
   function renderThemeSettings() { const preset = $('#themePreset'), accent = $('#themeAccent'), preview = $('#themePreview'); if (!preset || !accent) return; const t = loadTheme(); preset.value = t.preset || 'midnight'; accent.value = t.accent || '#4f9dff'; const redraw = () => { const nt = { preset: preset.value, accent: accent.value }; saveTheme(nt); applyTheme(nt); if (preview) preview.innerHTML = `<div class="stat"><div class="k">Preview</div><div class="v pos">${THEME_PRESETS[preset.value]?.label || preset.value}</div><div class="sub">Accent ${accent.value}</div></div><button class="btn sm">ボタン</button><span class="tag">タグ</span>`; }; preset.oninput = redraw; accent.oninput = redraw; const reset = $('#themeReset'); if (reset) reset.onclick = () => { saveTheme({ preset: 'midnight', accent: '#4f9dff' }); applyTheme(); renderThemeSettings(); }; redraw(); }
   function renderSettings() { renderSettingsTabs(); renderThemeSettings(); renderCatTree(); renderRecList(); renderTplList(); renderReadings(); $('#dl-top').innerHTML = Object.keys(state.categories.expense).map(s => `<option value="${esc(s)}">`).join(''); }
-  function renderCatTree() {
-    const kind = $('#catKind').value;
-    const qEl = $('#catSearch');
-    const query = qEl ? qEl.value.trim() : '';
-    const rows = categoryRows(kind).filter(r => !query || r.label.includes(query) || r.path.includes(query));
-    const stats = categoryUsageStats(kind);
-    const toolbar = `<div class="cat-toolbar"><div class="field" style="margin:0;min-width:180px"><label>カテゴリ検索</label><input id="catSearch" value="${esc(query)}" placeholder="例: 食費 / 税金"></div><div class="acc-sub">件数と金額は配下カテゴリ込みです。使用中カテゴリの削除はv1.6.1の統合/分割後に対応予定です。</div></div>`;
-    const body = rows.map(r => { const st = stats[r.path] || { count:0, amount:0, refs:0 }; const used = catIsUsed(r.path); const badge = r.path.startsWith('inc>給与') ? '<span class="mode-badge">給与モード用</span>' : ''; const canUp = canMoveCategory(r.path, -1), canDown = canMoveCategory(r.path, 1); return `<div class="cat-row level-${r.level} ${used ? '' : 'unused'}" data-catpath="${esc(r.path)}"><div class="cat-name" title="${esc(r.path)}">${esc(r.name)} ${badge}<div class="cat-meta">${esc(r.label)}</div></div><div class="cat-meta">${st.count}件 / ${yen(st.amount)}</div><div class="cat-meta">${used ? '使用中' : '未使用'}</div><div class="cat-actions"><button class="btn ghost sm" data-catopen="${esc(r.path)}">取引一覧</button><button class="btn ghost sm" data-catren="${esc(r.path)}">名称変更</button><button class="btn ghost sm" data-catup="${esc(r.path)}" ${canUp?'':'disabled'}>↑</button><button class="btn ghost sm" data-catdown="${esc(r.path)}" ${canDown?'':'disabled'}>↓</button><button class="btn danger sm" data-catdel="${esc(r.path)}" ${used?'disabled':''}>削除</button></div></div>`; }).join('') || '<p class="muted">カテゴリなし</p>';
-    $('#catTree').innerHTML = `<div class="cat-manager">${toolbar}<div>${body}</div></div>`;
-    const cs = $('#catSearch'); if (cs) cs.addEventListener('input', renderCatTree);
-    $$('[data-catopen]', $('#catTree')).forEach(b => b.addEventListener('click', () => { const row = categoryRows(kind).find(r => r.path === b.dataset.catopen); gotoListWithCategory(b.dataset.catopen, row ? row.label : b.dataset.catopen); }));
-    $$('[data-catren]', $('#catTree')).forEach(b => b.addEventListener('click', () => openCategoryRenameModal(b.dataset.catren)));
-    $$('[data-catdel]', $('#catTree')).forEach(b => b.addEventListener('click', () => { if (confirm('この未使用カテゴリを削除しますか？')) deleteUnusedCategory(b.dataset.catdel); }));
-    $$('[data-catup]', $('#catTree')).forEach(b => b.addEventListener('click', () => moveCategory(b.dataset.catup, -1)));
-    $$('[data-catdown]', $('#catTree')).forEach(b => b.addEventListener('click', () => moveCategory(b.dataset.catdown, 1)));
-  }
-  function categoryRows(kind){const out=[];const root=state.categories[kind];const pfx=kind==='income'?'inc':'exp';Object.keys(root).forEach(top=>{out.push({path:pfx+'>'+top,label:top,name:top,level:0});const mids=root[top]||{};Object.keys(mids).forEach(mid=>{out.push({path:pfx+'>'+top+'>'+mid,label:top+' › '+mid,name:mid,level:1});(mids[mid]||[]).forEach(leaf=>out.push({path:pfx+'>'+top+'>'+mid+'>'+leaf,label:top+' › '+mid+' › '+leaf,name:leaf,level:2}));});});return out;}
-  function categoryPaths(kind){return categoryRows(kind).map(r=>({path:r.path,label:r.label}));}
-  function categoryUsageStats(kind){const rows=categoryRows(kind);const stats={};rows.forEach(r=>stats[r.path]={count:0,amount:0,refs:0});const pfx=kind==='income'?'inc>':'exp>';state.transactions.forEach(t=>{const seen=new Set();t.lines.forEach(l=>{if(!l.ref.startsWith('cat:'+pfx))return;const path=l.ref.slice(4);const amount=kind==='income'?-l.amount:l.amount;if(amount<=0)return;rows.forEach(r=>{if(path===r.path||path.startsWith(r.path+'>')){stats[r.path].amount+=amount;stats[r.path].refs++;seen.add(r.path);}});});seen.forEach(p=>stats[p].count++);});return stats;}
+  function renderCatTree() { const kind = $('#catKind').value, root = state.categories[kind]; let html = ''; for (const top of Object.keys(root)) { html += `<div style="margin-bottom:6px"><b>${esc(top)}</b> `; const parts = []; for (const mid of Object.keys(root[top] || {})) { const leaves = root[top][mid] || []; parts.push(`<span class="tag">${esc(mid)}${leaves.length ? '：' + leaves.map(esc).join('・') : ''}</span>`); } html += parts.join(' ') + `</div>`; } $('#catTree').innerHTML = html || '<p class="muted">カテゴリなし</p>'; }
+
+  function categoryPaths(kind){const out=[];const root=state.categories[kind];const pfx=kind==='income'?'inc':'exp';Object.keys(root).forEach(top=>{out.push({path:pfx+'>'+top,label:top});const mids=root[top]||{};Object.keys(mids).forEach(mid=>{out.push({path:pfx+'>'+top+'>'+mid,label:top+' › '+mid});(mids[mid]||[]).forEach(leaf=>out.push({path:pfx+'>'+top+'>'+mid+'>'+leaf,label:top+' › '+mid+' › '+leaf}));});});return out;}
   function catIsUsed(path){const full='cat:'+path,pref=full+'>';if(state.transactions.some(t=>t.lines.some(l=>l.ref===full||l.ref.startsWith(pref))))return true;if(Object.keys(state.budgets||{}).some(k=>k===path||k.startsWith(path+'>')))return true;if((state.recurring||[]).some(r=>r.params&&r.params.catPath&&(r.params.catPath===path||r.params.catPath.startsWith(path+'>'))))return true;if((state.templates||[]).some(t=>(t.items||[]).some(it=>it.catPath&&(it.catPath===path||it.catPath.startsWith(path+'>')))))return true;return false;}
   function replaceCatRefs(oldPath,newPath){const oldRef='cat:'+oldPath,newRef='cat:'+newPath;state.transactions.forEach(t=>t.lines.forEach(l=>{if(l.ref===oldRef||l.ref.startsWith(oldRef+'>'))l.ref=newRef+l.ref.slice(oldRef.length);}));const nb={};Object.entries(state.budgets||{}).forEach(([k,v])=>{nb[(k===oldPath||k.startsWith(oldPath+'>'))?newPath+k.slice(oldPath.length):k]=v;});state.budgets=nb;(state.recurring||[]).forEach(r=>{if(r.params&&r.params.catPath&&(r.params.catPath===oldPath||r.params.catPath.startsWith(oldPath+'>')))r.params.catPath=newPath+r.params.catPath.slice(oldPath.length);});(state.templates||[]).forEach(t=>(t.items||[]).forEach(it=>{if(it.catPath&&(it.catPath===oldPath||it.catPath.startsWith(oldPath+'>')))it.catPath=newPath+it.catPath.slice(oldPath.length);}));}
   function renameCategoryDef(oldPath,newName){const parts=oldPath.split('>');const kind=parts[0]==='inc'?'income':'expense';const root=state.categories[kind];const np=parts.slice();np[np.length-1]=newName;const newPath=np.join('>');if(oldPath===newPath)return;if(kind==='income'){root[newName]=root[parts[1]]||{};delete root[parts[1]];}else{const top=parts[1],mid=parts[2],leaf=parts[3];if(parts.length===2){root[newName]=root[top]||{};delete root[top];}else if(parts.length===3){root[top][newName]=root[top][mid]||[];delete root[top][mid];}else{const arr=root[top][mid]||[];const i=arr.indexOf(leaf);if(i>=0)arr[i]=newName;}}replaceCatRefs(oldPath,newPath);persist();refreshDatalists();renderAll();toast('カテゴリ名を変更しました ✓');}
-  function deleteUnusedCategory(path){if(catIsUsed(path))return toast('使用中のカテゴリは削除できません');const parts=path.split('>');const kind=parts[0]==='inc'?'income':'expense';const root=state.categories[kind];if(kind==='income')delete root[parts[1]];else{const top=parts[1],mid=parts[2],leaf=parts[3];if(parts.length===2)delete root[top];else if(parts.length===3)delete root[top][mid];else{const arr=root[top][mid]||[];const i=arr.indexOf(leaf);if(i>=0)arr.splice(i,1);}}persist();renderCatTree();renderEntry();renderDrill();renderBudget();toast('未使用カテゴリを削除しました ✓');}
-  function siblingInfo(path){const parts=path.split('>');const kind=parts[0]==='inc'?'income':'expense';const root=state.categories[kind];if(kind==='income'||parts.length===2)return {arr:Object.keys(root), set:arr=>{const nr={};arr.forEach(k=>nr[k]=root[k]);state.categories[kind]=nr;}, key:parts[1]};if(parts.length===3){const top=parts[1];return {arr:Object.keys(root[top]||{}), set:arr=>{const old=root[top]||{}, nr={};arr.forEach(k=>nr[k]=old[k]);root[top]=nr;}, key:parts[2]};}const top=parts[1],mid=parts[2];return {arr:(root[top]&&root[top][mid])||[], set:arr=>{root[top][mid]=arr.slice();}, key:parts[3]};}
-  function canMoveCategory(path,dir){const s=siblingInfo(path);const i=s.arr.indexOf(s.key);return i>=0&&i+dir>=0&&i+dir<s.arr.length;}
-  function moveCategory(path,dir){const s=siblingInfo(path);const arr=s.arr.slice();const i=arr.indexOf(s.key);if(i<0||i+dir<0||i+dir>=arr.length)return;[arr[i],arr[i+dir]]=[arr[i+dir],arr[i]];s.set(arr);persist();renderCatTree();renderEntry();renderDrill();renderBudget();toast('カテゴリ順を変更しました');}
-  function openCategoryRenameModal(path){const kind=$('#catKind').value;const opts=categoryPaths(kind).map(c=>`<option value="${esc(c.path)}" ${c.path===path?'selected':''}>${esc(c.label)}</option>`).join('');$('#modal').innerHTML=`<h3>カテゴリ名変更</h3><p class="hint">カテゴリ定義そのものの名前を変更します。既存取引・予算・固定費・テンプレも追従します。</p><div class="field"><label>対象カテゴリ</label><select id="cr_path">${opts}</select></div><div class="field"><label>新しい名前（この階層名のみ）</label><input id="cr_name"></div><div class="actions"><button class="btn ghost" id="cr_cancel">キャンセル</button><button class="btn" id="cr_ok">変更</button></div>`;const fill=()=>{$('#cr_name').value=$('#cr_path').value.split('>').pop();};$('#cr_path').addEventListener('change',fill);fill();$('#cr_cancel').addEventListener('click',closeModal);$('#cr_ok').addEventListener('click',()=>{const n=$('#cr_name').value.trim();if(!n)return toast('新しい名前を入力してください');renameCategoryDef($('#cr_path').value,n);closeModal();});showModal();}
-  function openCategoryDeleteModal(){const kind=$('#catKind').value;const list=categoryPaths(kind).filter(c=>!catIsUsed(c.path));if(!list.length)return toast('削除できる未使用カテゴリがありません');$('#modal').innerHTML=`<h3>未使用カテゴリ削除</h3><p class="hint">取引・予算・固定費・テンプレで使われていないカテゴリだけ削除できます。</p><div class="field"><label>削除対象</label><select id="cd_path">${list.map(c=>`<option value="${esc(c.path)}">${esc(c.label)}</option>`).join('')}</select></div><div class="actions"><button class="btn ghost" id="cd_cancel">キャンセル</button><button class="btn danger" id="cd_ok">削除</button></div>`;$('#cd_cancel').addEventListener('click',closeModal);$('#cd_ok').addEventListener('click',()=>{if(confirm('この未使用カテゴリを削除しますか？')){deleteUnusedCategory($('#cd_path').value);closeModal();}});showModal();}
- function renderReadings() {
+  function deleteUnusedCategory(path){if(catIsUsed(path))return toast('使用中のカテゴリは削除できません');const parts=path.split('>');const kind=parts[0]==='inc'?'income':'expense';const root=state.categories[kind];if(kind==='income')delete root[parts[1]];else{const top=parts[1],mid=parts[2],leaf=parts[3];if(parts.length===2)delete root[top];else if(parts.length===3)delete root[top][mid];else{const arr=root[top][mid]||[];const i=arr.indexOf(leaf);if(i>=0)arr.splice(i,1);}}persist();renderCatTree();renderEntry();toast('未使用カテゴリを削除しました ✓');}
+  function openCategoryRenameModal(){const kind=$('#catKind').value;const opts=categoryPaths(kind).map(c=>`<option value="${c.path}">${esc(c.label)}</option>`).join('');$('#modal').innerHTML=`<h3>カテゴリ名変更</h3><p class="hint">カテゴリ定義そのものの名前を変更します。既存取引・予算・固定費・テンプレも追従します。</p><div class="field"><label>対象カテゴリ</label><select id="cr_path">${opts}</select></div><div class="field"><label>新しい名前（この階層名のみ）</label><input id="cr_name"></div><div class="actions"><button class="btn ghost" id="cr_cancel">キャンセル</button><button class="btn" id="cr_ok">変更</button></div>`;const fill=()=>{$('#cr_name').value=$('#cr_path').value.split('>').pop();};$('#cr_path').addEventListener('change',fill);fill();$('#cr_cancel').addEventListener('click',closeModal);$('#cr_ok').addEventListener('click',()=>{const n=$('#cr_name').value.trim();if(!n)return toast('新しい名前を入力してください');renameCategoryDef($('#cr_path').value,n);closeModal();});showModal();}
+  function openCategoryDeleteModal(){const kind=$('#catKind').value;const list=categoryPaths(kind).filter(c=>!catIsUsed(c.path));if(!list.length)return toast('削除できる未使用カテゴリがありません');$('#modal').innerHTML=`<h3>未使用カテゴリ削除</h3><p class="hint">取引・予算・固定費・テンプレで使われていないカテゴリだけ削除できます。</p><div class="field"><label>削除対象</label><select id="cd_path">${list.map(c=>`<option value="${c.path}">${esc(c.label)}</option>`).join('')}</select></div><div class="actions"><button class="btn ghost" id="cd_cancel">キャンセル</button><button class="btn danger" id="cd_ok">削除</button></div>`;$('#cd_cancel').addEventListener('click',closeModal);$('#cd_ok').addEventListener('click',()=>{if(confirm('この未使用カテゴリを削除しますか？')){deleteUnusedCategory($('#cd_path').value);closeModal();}});showModal();}
+
+  function addCategory() { const kind = $('#catKind').value, top = $('#catTop').value.trim(), mid = $('#catMid').value.trim(), leaf = $('#catLeaf').value.trim(); if (!top) return toast('大カテゴリは必須です'); const root = state.categories[kind]; if (!root[top]) root[top] = {}; if (mid) { if (!root[top][mid]) root[top][mid] = []; if (leaf && !root[top][mid].includes(leaf)) root[top][mid].push(leaf); } persist(); renderCatTree(); refreshDatalists(); $('#catMid').value = ''; $('#catLeaf').value = ''; toast('カテゴリを追加しました ✓'); }
+
+  function renderReadings() {
     const host = $('#readingList'); if (!host) return; const entries = Object.entries(state.readings || {});
     host.innerHTML = entries.length ? entries.sort((a, b) => a[0].localeCompare(b[0], 'ja')).map(([k, v]) => `<div class="reading-row"><span class="rk">${esc(k)}</span><span class="ry">${esc(v)}</span><div class="row" style="gap:6px"><button class="btn ghost sm" data-rdedit="${esc(k)}">編集</button><button class="btn danger sm" data-rddel="${esc(k)}">削除</button></div></div>`).join('') : `<p class="muted">読み仮名の登録はありません。入力時に自動記録されるほか、ここで手動追加できます。</p>`;
     $$('[data-rdedit]', host).forEach(b => b.addEventListener('click', () => openReadingModal(b.dataset.rdedit)));
@@ -594,7 +681,7 @@
 
   
 
-/* ============ Excelインポート（移行専用 v1.6） ============ */
+/* ============ Excelインポート（移行専用 v1.6.2） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -618,7 +705,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.6）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.6.2）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -633,7 +720,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.6',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.6.2',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);
@@ -819,7 +906,7 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     $('#typebar').addEventListener('click', e => { if (e.target.dataset.type) { ui.type = e.target.dataset.type; renderEntry(); } });
     $('#ym').addEventListener('change', onMonthChange); $('#ymPrev').addEventListener('click', () => shiftMonth(-1)); $('#ymNext').addEventListener('click', () => shiftMonth(1)); $('#ymToday').addEventListener('click', () => { $('#ym').value = M.curYM(); onMonthChange(); });
     ['#fltYm', '#fltCat', '#fltKind', '#fltText', '#fltSort'].forEach(s => { const e=$(s); if(e)e.addEventListener('input', renderList); });
-    $('#fltClear').addEventListener('click', () => { listCategoryFilter = null; $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; if($('#fltSort')) $('#fltSort').value = 'date_desc'; renderList(); });
+    $('#fltClear').addEventListener('click', () => { $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; if($('#fltSort')) $('#fltSort').value = 'date_desc'; renderList(); });
     $('#chkAll').addEventListener('change', e => { const rows = filteredRows(); if (e.target.checked) rows.forEach(r => selected.add(r.id)); else rows.forEach(r => selected.delete(r.id)); renderList(); });
     $('#drillKind').addEventListener('change', e => { drill.kind = e.target.value; drill.parts = []; drill.leaf = null; renderDrill(); });
     ['#drillRange', '#drillFrom', '#drillTo'].forEach(sel => { const el = $(sel); if (el) el.addEventListener('input', () => { drill.parts = []; drill.leaf = null; renderDrill(); }); });

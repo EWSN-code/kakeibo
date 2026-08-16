@@ -52,7 +52,7 @@
     $('#typebar').addEventListener('click', e => { if (e.target.dataset.type) { ui.type = e.target.dataset.type; renderEntry(); } });
     $('#ym').addEventListener('change', onMonthChange); $('#ymPrev').addEventListener('click', () => shiftMonth(-1)); $('#ymNext').addEventListener('click', () => shiftMonth(1)); $('#ymToday').addEventListener('click', () => { $('#ym').value = M.curYM(); onMonthChange(); });
     ['#fltYm', '#fltCat', '#fltKind', '#fltText', '#fltSort'].forEach(s => { const e=$(s); if(e)e.addEventListener('input', renderList); });
-    $('#fltClear').addEventListener('click', () => { listCategoryFilter = null; $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; if($('#fltSort')) $('#fltSort').value = 'date_desc'; renderList(); });
+    $('#fltClear').addEventListener('click', () => { $('#fltYm').value = ''; $('#fltCat').value = ''; $('#fltKind').value = ''; $('#fltText').value = ''; if($('#fltSort')) $('#fltSort').value = 'date_desc'; renderList(); });
     $('#chkAll').addEventListener('change', e => { const rows = filteredRows(); if (e.target.checked) rows.forEach(r => selected.add(r.id)); else rows.forEach(r => selected.delete(r.id)); renderList(); });
     $('#drillKind').addEventListener('change', e => { drill.kind = e.target.value; drill.parts = []; drill.leaf = null; renderDrill(); });
     ['#drillRange', '#drillFrom', '#drillTo'].forEach(sel => { const el = $(sel); if (el) el.addEventListener('input', () => { drill.parts = []; drill.leaf = null; renderDrill(); }); });

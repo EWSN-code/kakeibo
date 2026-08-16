@@ -1,6 +1,6 @@
   /* ============ レポート ============ */
 
-  /* ============ 分析 v1.6：期間選択 ============ */
+  /* ============ 分析 v1.6.2：期間選択 ============ */
   function analysisPeriod() {
     const base = currentYM();
     const mode = ($('#drillRange') ? $('#drillRange').value : 'month') || 'month';

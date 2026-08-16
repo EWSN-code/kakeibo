@@ -44,7 +44,6 @@
 
   let drill = { kind: 'net', parts: [], leaf: null };   // 既定=収支(net)
   let selected = new Set();
-  let listCategoryFilter = null;
   let simSurplus = null;
   let wishFilter = { tag: null, status: 'active' };
   let priceOpen = new Set(), priceShowAll = new Set(), priceRange = {};
@@ -56,6 +55,8 @@
   function el(tag, attrs) { const e = document.createElement(tag); if (attrs) for (const k in attrs) { if (k === 'html') e.innerHTML = attrs[k]; else e.setAttribute(k, attrs[k]); } return e; }
   function toast(msg) { const t = $('#toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(t._t); t._t = setTimeout(() => t.classList.remove('show'), 2000); }
   const yen = M.yen;
+  function yenRound(v) { return Math.round(Number(v) || 0); }
+  function evalYen(raw) { const v = M.evalAmount(raw); return Number.isNaN(v) ? NaN : yenRound(v); }
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
   function isNarrow() { return window.matchMedia('(max-width:760px)').matches; }
 

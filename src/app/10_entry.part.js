@@ -40,46 +40,151 @@
   function renderDebits() { const area = $('#debitArea'); if (!area) return; const rm = ui.exp.ratioMode; area.innerHTML = ui.exp.debits.map((d, i) => `<div class="line-row" data-i="${i}"><div class="field cat"><select class="d_cat catsel">${categoryOptions('expense', d.path)}</select></div>${rm ? `<div class="field ratio"><input class="d_ratio" inputmode="decimal" value="${esc(d.ratio || '')}" placeholder="比" title="割合(重み)"></div>` : ''}<div class="field amt"><input class="d_amt" inputmode="decimal" value="${esc(d.amt)}" placeholder="0 (式可)"><div class="amt-eval d_eval"></div></div><div><button class="btn ghost sm d_del">✕</button></div></div>`).join(''); $$('.line-row', area).forEach(row => { const i = +row.dataset.i; const cat = row.querySelector('.d_cat'), amt = row.querySelector('.d_amt'), ev = row.querySelector('.d_eval'); if (ui.exp.debits[i].path) cat.value = ui.exp.debits[i].path; cat.addEventListener('change', () => ui.exp.debits[i].path = cat.value); amt.addEventListener('input', () => { ui.exp.debits[i].amt = amt.value; const raw = M.toHankaku(amt.value).trim(); ev.textContent = (!raw || /^\d+$/.test(raw)) ? '' : (Number.isNaN(M.evalAmount(amt.value)) ? '⚠ 式が不正' : '= ' + yen(M.evalAmount(amt.value))); recalcExpense(); }); const rat = row.querySelector('.d_ratio'); if (rat) rat.addEventListener('input', () => ui.exp.debits[i].ratio = rat.value); row.querySelector('.d_del').addEventListener('click', () => { syncExpFromDOM(); ui.exp.debits.splice(i, 1); if (!ui.exp.debits.length) ui.exp.debits.push({ path: '', amt: '', ratio: '' }); renderDebits(); recalcExpense(); }); }); attachHankakuAll(area); enhanceCatSelects(area); }
 
 
+  /* ---- レシートOCR解析 v2 ---- */
+  const RECEIPT_PROFILES = {
+    generic: { label: '汎用', discountWords: ['割引','値引','値引き','まとめ値引','アプリ月間割引'], ignoreWords: ['ボーナスポイント','ポイント','合計','小計','お預り','お釣り','釣銭','WAON','クレジット'] },
+    aeon: { label: 'イオン', discountWords: ['割引','まとめ値引','アプリ月間割引'], ignoreWords: ['ボーナスポイント','WAON','イオン','AEON','合計','小計','お預り','お釣り'] }
+  };
+  function receiptCategoryHint(name) {
+    const flat = M.flattenCategories(state.categories, 'expense');
+    const pick = words => flat.find(c => words.some(w => c.label.includes(w)))?.path || '';
+    if (/牛乳|チーズ|ヨーグルト|モッツレラ|カマンベール/.test(name)) return pick(['乳製品','食材','食費']);
+    if (/なす|ナス|ピーマン|野菜/.test(name)) return pick(['野菜','食材','食費']);
+    if (/焼魚|ちくわ|魚|練物/.test(name)) return pick(['魚','魚介','練物','食材','食費']);
+    if (/バゲット|パン|焼きいも|焼いも|おやつ/.test(name)) return pick(['パン','菓子','食材','食費']);
+    if (/歯ブラシ|デンタル|ゴキ|殺虫|洗剤|日用品/.test(name)) return pick(['日用品','衛生','雑費']);
+    return pick(['食材','食費']) || (flat[0]?.path || '');
+  }
+  function receiptTaxHint(name, markedReduced) {
+    if (markedReduced) return 8;
+    if (/牛乳|チーズ|ヨーグルト|モッツレラ|カマン|なす|ナス|ピーマン|焼魚|ちくわ|バゲット|パン|焼きいも|食品|食材/.test(name)) return 8;
+    if (/歯ブラシ|デンタル|ゴキ|殺虫|洗剤|日用品/.test(name)) return 10;
+    return '';
+  }
+  function receiptNumToken(tok) {
+    const raw = String(tok || '');
+    const markedReduced = /[※＊*]/.test(raw);
+    const s = M.toHankaku(raw).replace(/[※＊*]/g,'').replace(/[¥￥,，円]/g,'').trim();
+    if (!/^[+-]?\d+(?:\.\d+)?$/.test(s)) return null;
+    return { value: yenRound(+s), markedReduced };
+  }
+  function normalizeReceiptText(text) {
+    return M.toHankaku(String(text||''))
+      .replace(/[\r\n]+/g,' ')
+      .replace(/[（）()]/g,' ')
+      .replace(/([+-]?\d[\d,]*[※＊*]?)/g,' $1 ')
+      .replace(/(割引|値引き|値引|まとめ値引|アプリ月間割引|ボーナスポイント)/g,' $1 ')
+      .replace(/\s+/g,' ')
+      .trim();
+  }
+  function parseReceiptTextV2(text, profileKey) {
+    const prof = RECEIPT_PROFILES[profileKey] || RECEIPT_PROFILES.generic;
+    const tokens = normalizeReceiptText(text).split(' ').filter(Boolean);
+    const items = [];
+    let name = [];
+    let pendingDiscount = 0;
+    let ignoreUntilNextPrice = false;
+    const isDiscountWord = t => prof.discountWords.some(w => t.includes(w));
+    const isIgnoreWord = t => prof.ignoreWords.some(w => t.includes(w));
+    const flushNameAsNote = () => { name = []; };
+    for (let i=0;i<tokens.length;i++) {
+      const tok = tokens[i];
+      if (/^\d+%$/.test(tok)) continue;
+      if (/^P$|^\d+P$/i.test(tok)) { flushNameAsNote(); continue; }
+      if (/個|単|点|合計|小計/.test(tok) && !receiptNumToken(tok)) continue;
+      if (isIgnoreWord(tok)) { ignoreUntilNextPrice = /ボーナスポイント|ポイント/.test(tok); flushNameAsNote(); continue; }
+      if (isDiscountWord(tok)) { continue; }
+      const num = receiptNumToken(tok);
+      if (num) {
+        if (ignoreUntilNextPrice && num.value >= 0) { ignoreUntilNextPrice = false; continue; }
+        if (num.value < 0) {
+          if (name.length) pendingDiscount += num.value;
+          else if (items.length) items[items.length-1].discount += num.value;
+          continue;
+        }
+        if (name.length) {
+          const nm = name.join(' ').replace(/^[\-:：]+|[\-:：]+$/g,'').trim();
+          if (nm) {
+            const tax = receiptTaxHint(nm, num.markedReduced);
+            const discount = pendingDiscount;
+            const gross = num.value;
+            const item = { name:nm, gross, discount, taxRate:tax, category:receiptCategoryHint(nm), enabled:true };
+            item.net = yenRound(gross + discount);
+            items.push(item);
+          }
+          name = [];
+          pendingDiscount = 0;
+        }
+        continue;
+      }
+      if (/^[-+x×]$/.test(tok)) continue;
+      name.push(tok.replace(/[※＊*]/g,''));
+      if (name.length > 8) name.shift();
+    }
+    return items.filter(x => x.name && x.net !== 0);
+  }
+  function receiptEffectiveNet(item, taxMode, roundMode) {
+    const base = yenRound((+item.gross || 0) + (+item.discount || 0));
+    if (taxMode !== 'excluded') return base;
+    const rate = +item.taxRate || 10;
+    const raw = base * (1 + rate / 100);
+    if (roundMode === 'floor') return Math.floor(raw);
+    if (roundMode === 'ceil') return Math.ceil(raw);
+    return Math.round(raw);
+  }
+  function safeJsonParseLoose(text) {
+    const s = String(text||'').trim().replace(/^```(?:json)?/,'').replace(/```$/,'').trim();
+    return JSON.parse(s);
+  }
+  function receiptItemsFromAI(text) {
+    const obj = safeJsonParseLoose(text);
+    const arr = obj.items || obj.lines || [];
+    return arr.map(x => ({
+      name: String(x.name || x.item || '').trim(),
+      gross: yenRound(x.gross ?? x.price ?? x.amount ?? x.net ?? 0),
+      discount: yenRound(x.discount || 0),
+      net: yenRound(x.net ?? ((x.gross ?? x.price ?? x.amount ?? 0) + (x.discount || 0))),
+      taxRate: x.taxRate == null ? '' : +x.taxRate,
+      category: x.categoryHint || x.category || receiptCategoryHint(String(x.name || x.item || '')),
+      enabled: true
+    })).filter(x => x.name && x.net);
+  }
+  function buildReceiptAIPrompt(text) {
+    return `このレシート写真またはOCRテキストから、家計簿アプリに取り込むためのJSONだけを返してください。説明文やMarkdownは禁止です。\n\n抽出する項目:\n- 商品名 name\n- 元価格 gross\n- 割引額 discount（値引きは負数）\n- 実質金額 net\n- 税率候補 taxRate（8 / 10 / null）\n- カテゴリ候補 categoryHint（不明ならnull）\n\n注意:\n- ※や*が付いた商品は軽減税率8%候補です。\n- ボーナスポイントやポイント付与は明細から除外してください。\n- 割引は可能な限り該当商品に紐づけてください。\n- 合計が不明または合わない場合はwarningsに理由を書いてください。\n\n出力形式:\n{"items":[{"name":"","gross":0,"discount":0,"net":0,"taxRate":8,"categoryHint":null}],"warnings":[]}\n\nOCRテキスト:\n---\n${text}\n---`;
+  }
   function openReceiptInputModal() {
     syncExpFromDOM();
-    let rows = Array.from({ length: 5 }, () => ({ amount: '', cat: '', sel: true }));
     let pasteText = '';
-    let ignoreTotals = true;
-    let parseInfo = '';
-    const isBlankRow = r => !(String(r.amount || '').trim()) && !(String(r.cat || '').trim());
-    const shouldSkipReceiptLine = line => {
-      const raw = String(line || '').trim();
-      if (!ignoreTotals || !raw) return false;
-      if (/\d{4}[\/\-.年]\d{1,2}[\/\-.月]\d{1,2}/.test(raw)) return true;
-      if (/\d{1,2}:\d{2}/.test(raw) && !/[¥￥円]/.test(raw)) return true;
-      return /(合計|小計|税込|税額|消費税|対象計|内税|外税|お預|預り|お釣|釣銭|現計|現金|クレジット|カード|電子マネー|ポイント|残高|領収|レシート|店番|登録番号|TEL|電話|担当|釣)/.test(raw);
+    let aiText = '';
+    let profile = 'aeon';
+    let taxMode = 'included';
+    let roundMode = 'round';
+    let items = [];
+    const total = () => items.filter(x=>x.enabled).reduce((s,x)=>s+receiptEffectiveNet(x,taxMode,roundMode),0);
+    const sync = () => {
+      const pt=$('#ri_paste'); if(pt) pasteText=pt.value;
+      const ai=$('#ri_ai'); if(ai) aiText=ai.value;
+      const pr=$('#ri_profile'); if(pr) profile=pr.value;
+      const tm=$('#ri_taxMode'); if(tm) taxMode=tm.value;
+      const rm=$('#ri_round'); if(rm) roundMode=rm.value;
+      $$('#ri_items tr[data-i]').forEach(tr=>{const i=+tr.dataset.i; const it=items[i]; if(!it)return; it.enabled=tr.querySelector('.ri_on').checked; it.name=tr.querySelector('.ri_name').value; it.gross=evalYen(tr.querySelector('.ri_gross').value); it.discount=evalYen(tr.querySelector('.ri_disc').value); it.taxRate=tr.querySelector('.ri_tax').value; it.category=tr.querySelector('.ri_cat').value; it.net=yenRound((Number.isNaN(it.gross)?0:it.gross)+(Number.isNaN(it.discount)?0:it.discount));});
     };
-    const extractAmount = line => {
-      const raw = M.toHankaku(String(line || '')).replace(/[，,]/g, '');
-      if (shouldSkipReceiptLine(raw)) return null;
-      const ms = [...raw.matchAll(/[¥￥]?\s*([+-]?\d+(?:\.\d+)?)(?:\s*円)?/g)].map(m => m[1]);
-      if (!ms.length) return null;
-      const n = ms[ms.length - 1];
-      if (/^(20\d{2}|19\d{2})$/.test(n) && !/[¥￥円]/.test(raw)) return null;
-      return n;
-    };
-    const parseLines = text => { const lines = String(text || '').split(/\n+/); const out=[]; let skipped=0; lines.forEach(line=>{ const amount=extractAmount(line); if(amount) out.push({amount,cat:'',sel:true}); else if(line.trim()) skipped++; }); parseInfo = out.length ? `${out.length}行を読み取りました${skipped ? `（無視 ${skipped}行）` : ''}` : (skipped ? `${skipped}行を確認しましたが金額候補はありません` : ''); return out; };
-    const total = () => rows.reduce((sum, r) => { const v = M.evalAmount(r.amount); return sum + (Number.isNaN(v) ? 0 : v); }, 0);
-    const syncRows = () => { $$('#ri_rows tr[data-i]').forEach(tr => { const i = +tr.dataset.i; rows[i].sel = tr.querySelector('.ri_sel').checked; rows[i].amount = tr.querySelector('.ri_amt').value; rows[i].cat = tr.querySelector('.ri_cat').value; }); const pt = $('#ri_paste'); if (pt) pasteText = pt.value; const ig = $('#ri_ignoreTotals'); if (ig) ignoreTotals = ig.checked; };
     const draw = () => {
-      $('#modal').innerHTML = `<h3>OSコピペ / レシート金額入力</h3><p class="hint">iPhoneのOCRやメモアプリから貼り付けたテキストから金額だけを抽出します。品目名は扱わず、選択行にカテゴリを一括設定して明細へ反映します。</p><div class="field"><label>貼り付けテキスト</label><textarea id="ri_paste" rows="5" placeholder="牛乳 238\n卵 298\n洗剤 398">${esc(pasteText)}</textarea></div><label class="hint" style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="ri_ignoreTotals" ${ignoreTotals ? 'checked' : ''} style="width:auto"> 合計/小計/税/支払/お釣りっぽい行を無視</label><div class="row" style="gap:6px"><button class="btn ghost sm" id="ri_clip">クリップボード読込</button><button class="btn ghost sm" id="ri_parseReplace">貼り付けで置換</button><button class="btn ghost sm" id="ri_parse">貼り付けから行追加</button><button class="btn ghost sm" id="ri_add">＋行追加</button><button class="btn ghost sm" id="ri_selectAll">全選択</button><button class="btn ghost sm" id="ri_remove">選択行を削除</button></div><div class="acc-sub" id="ri_parseInfo" style="margin-top:6px">${esc(parseInfo)}</div><div class="row" style="gap:6px;margin-top:8px"><div class="field" style="flex:2;margin:0"><label>選択行にカテゴリ設定</label><select id="ri_bulk" class="catsel"><option value="">カテゴリを選択</option>${categoryOptions('expense')}</select></div><button class="btn ghost sm" id="ri_applyCat" style="align-self:end">選択行へ設定</button></div><div class="excel-tablewrap" style="margin-top:10px"><table><thead><tr><th style="width:42px">選択</th><th>金額</th><th>カテゴリ</th></tr></thead><tbody id="ri_rows">${rows.map((r,i)=>`<tr data-i="${i}"><td><input class="ri_sel" type="checkbox" ${r.sel?'checked':''} style="width:auto"></td><td><input class="ri_amt no-amount-pad" inputmode="decimal" value="${esc(r.amount)}" placeholder="0"></td><td><select class="ri_cat catsel"><option value="">未分類</option>${categoryOptions('expense', r.cat)}</select></td></tr>`).join('')}</tbody></table></div><div class="totline"><span>入力合計</span><span class="v" id="ri_total">${yen(total())}</span></div><div class="balance-warn" id="ri_warn"></div><div class="actions"><button class="btn ghost" id="ri_cancel">キャンセル</button><button class="btn" id="ri_commit">明細へ反映</button></div>`;
-      enhanceCatSelects($('#modal')); const upd = () => { syncRows(); $('#ri_total').textContent = yen(total()); };
-      $$('#ri_rows input, #ri_rows select').forEach(el => el.addEventListener('input', upd)); $('#ri_paste').addEventListener('input', () => pasteText = $('#ri_paste').value); $('#ri_ignoreTotals').addEventListener('change', syncRows);
-      $('#ri_clip').addEventListener('click', async () => { try { if (!navigator.clipboard || !navigator.clipboard.readText) return toast('この環境ではクリップボード読込に対応していません'); pasteText = await navigator.clipboard.readText(); draw(); } catch(e) { toast('クリップボードを読めませんでした'); } });
-      $('#ri_parseReplace').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = parsed; pasteText = ''; draw(); });
-      $('#ri_parse').addEventListener('click', () => { syncRows(); const parsed = parseLines(pasteText); if (!parsed.length) return toast('金額を読み取れませんでした'); rows = rows.filter(r => !isBlankRow(r)).concat(parsed); pasteText = ''; draw(); });
-      $('#ri_add').addEventListener('click', () => { syncRows(); rows.push({ amount: '', cat: '', sel: true }); draw(); }); $('#ri_selectAll').addEventListener('click', () => { syncRows(); const all = rows.some(r => !r.sel); rows.forEach(r => r.sel = all); draw(); }); $('#ri_remove').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !r.sel); if (!rows.length) rows.push({ amount: '', cat: '', sel: true }); draw(); });
-      $('#ri_applyCat').addEventListener('click', () => { syncRows(); const cat = $('#ri_bulk').value; if (!cat) return toast('カテゴリを選んでください'); rows.forEach(r => { if (r.sel) r.cat = cat; }); draw(); }); $('#ri_cancel').addEventListener('click', closeModal);
-      $('#ri_commit').addEventListener('click', () => { syncRows(); rows = rows.filter(r => !isBlankRow(r)); const valid = rows.map(r => ({ ...r, value: M.evalAmount(r.amount) })).filter(r => r.amount !== '' && !Number.isNaN(r.value) && r.value); if (!valid.length) return toast('金額を1行以上入力してください'); const uncategorized = valid.filter(r => !r.cat); if (uncategorized.length) { $('#ri_warn').textContent = `未分類の金額行が ${uncategorized.length} 件あります。カテゴリを設定してください。`; return; } const agg = new Map(); valid.forEach(r => agg.set(r.cat, (agg.get(r.cat) || 0) + r.value)); ui.exp.debits = [...agg.entries()].map(([path, amount]) => ({ path, amt: String(Math.round(amount)), ratio: '' })); ui.exp.total = String(Math.round(valid.reduce((sum, r) => sum + r.value, 0))); closeModal(); renderEntry(); toast(`${valid.length}行を${ui.exp.debits.length}カテゴリに集約しました ✓`); });
+      $('#modal').innerHTML = `<h3>レシートOCR解析 v2</h3><p class="hint">商品名・元価格・割引・税率候補を解析します。※/*付き価格は軽減税率8%候補として扱います。解析後に手修正してから明細へ反映できます。</p><div class="row" style="gap:8px"><div class="field"><label>店別ルール</label><select id="ri_profile"><option value="aeon" ${profile==='aeon'?'selected':''}>イオン</option><option value="generic" ${profile==='generic'?'selected':''}>汎用</option></select></div><div class="field"><label>税モード</label><select id="ri_taxMode"><option value="included" ${taxMode==='included'?'selected':''}>税込として読む</option><option value="excluded" ${taxMode==='excluded'?'selected':''}>外税を加算</option></select></div><div class="field"><label>外税端数</label><select id="ri_round"><option value="round" ${roundMode==='round'?'selected':''}>四捨五入</option><option value="floor" ${roundMode==='floor'?'selected':''}>切り捨て</option><option value="ceil" ${roundMode==='ceil'?'selected':''}>切り上げ</option></select></div></div><div class="field"><label>OCR貼り付けテキスト</label><textarea id="ri_paste" rows="5" placeholder="レシートOCRテキストを貼り付け">${esc(pasteText)}</textarea></div><div class="row" style="gap:6px"><button class="btn ghost sm" id="ri_parseV2">解析する</button><button class="btn ghost sm" id="ri_prompt">AI用プロンプトをコピー</button></div><details style="margin-top:8px"><summary>AI解析結果JSONを貼り付け</summary><div class="field"><label>AI返答JSON</label><textarea id="ri_ai" rows="5" placeholder='{"items":[...] }'>${esc(aiText)}</textarea></div><button class="btn ghost sm" id="ri_applyAI">AI結果を読み込む</button></details><div class="excel-tablewrap" style="margin-top:10px;max-height:42vh;overflow:auto"><table><thead><tr><th>使う</th><th>商品名</th><th>元価格</th><th>割引</th><th>税率</th><th>実質</th><th>カテゴリ</th></tr></thead><tbody id="ri_items">${items.map((it,i)=>`<tr data-i="${i}"><td><input class="ri_on" type="checkbox" ${it.enabled?'checked':''} style="width:auto"></td><td><input class="ri_name" value="${esc(it.name)}"></td><td><input class="ri_gross no-amount-pad" inputmode="decimal" value="${esc(it.gross)}"></td><td><input class="ri_disc no-amount-pad" inputmode="decimal" value="${esc(it.discount||0)}"></td><td><select class="ri_tax"><option value="" ${it.taxRate===''?'selected':''}>不明</option><option value="8" ${+it.taxRate===8?'selected':''}>8%</option><option value="10" ${+it.taxRate===10?'selected':''}>10%</option><option value="0" ${+it.taxRate===0?'selected':''}>0%</option></select></td><td class="num">${yen(receiptEffectiveNet(it,taxMode,roundMode))}</td><td><select class="ri_cat catsel"><option value="">未分類</option>${categoryOptions('expense', it.category)}</select></td></tr>`).join('') || '<tr><td colspan="7" class="muted" style="text-align:center;padding:16px">解析結果がありません</td></tr>'}</tbody></table></div><div class="totline"><span>反映合計</span><span class="v" id="ri_total">${yen(total())}</span></div><div class="row" style="gap:6px;margin-top:8px"><select id="ri_bulk" class="catsel"><option value="">選択行にカテゴリ設定</option>${categoryOptions('expense')}</select><button class="btn ghost sm" id="ri_applyCat">設定</button></div><div class="balance-warn" id="ri_warn"></div><div class="actions"><button class="btn ghost" id="ri_cancel">キャンセル</button><button class="btn" id="ri_commit">明細へ反映</button></div>`;
+      enhanceCatSelects($('#modal'));
+      ['#ri_profile','#ri_taxMode','#ri_round'].forEach(s=>$(s).addEventListener('change',()=>{sync();draw();}));
+      $('#ri_paste').addEventListener('input',()=>pasteText=$('#ri_paste').value);
+      const upd=()=>{sync();draw();};
+      $$('#ri_items input, #ri_items select').forEach(el=>el.addEventListener('change',upd));
+      $('#ri_parseV2').addEventListener('click',()=>{sync();items=parseReceiptTextV2(pasteText,profile); if(!items.length)toast('明細候補を読み取れませんでした'); draw();});
+      $('#ri_prompt').addEventListener('click',async()=>{sync();const prompt=buildReceiptAIPrompt(pasteText); try{await navigator.clipboard.writeText(prompt); toast('AI用プロンプトをコピーしました');}catch(e){$('#ri_warn').textContent='コピーできませんでした。プロンプト: '+prompt;}});
+      $('#ri_applyAI').addEventListener('click',()=>{sync();try{items=receiptItemsFromAI(aiText); if(!items.length)return toast('AI結果にitemsがありません'); draw();}catch(e){toast('AI結果JSONを読めません: '+e.message);}});
+      $('#ri_applyCat').addEventListener('click',()=>{sync();const cat=$('#ri_bulk').value;if(!cat)return toast('カテゴリを選んでください');items.forEach(it=>{if(it.enabled)it.category=cat;});draw();});
+      $('#ri_cancel').addEventListener('click',closeModal);
+      $('#ri_commit').addEventListener('click',()=>{sync();const valid=items.filter(x=>x.enabled&&x.name&&receiptEffectiveNet(x,taxMode,roundMode)>0);if(!valid.length)return toast('反映する明細がありません');const missing=valid.filter(x=>!x.category);if(missing.length){$('#ri_warn').textContent=`未分類の明細が ${missing.length} 件あります。カテゴリを設定してください。`;return;}const agg=new Map();valid.forEach(x=>{const amt=receiptEffectiveNet(x,taxMode,roundMode);agg.set(x.category,(agg.get(x.category)||0)+amt);});ui.exp.debits=[...agg.entries()].map(([path,amount])=>({path,amt:String(yenRound(amount)),ratio:''}));ui.exp.total=String(yenRound([...agg.values()].reduce((s,x)=>s+x,0)));closeModal();renderEntry();toast(`${valid.length}明細を${ui.exp.debits.length}カテゴリに集約しました ✓`);});
     };
     draw(); showModal();
   }
-
   function renderAllocTools() { const box = $('#allocTools'); if (!box) return; box.innerHTML = `<span class="lbl">按分:</span><button class="btn ghost sm" id="allocRest">残額を最終行へ</button><button class="btn ghost sm" id="allocEven">均等割り</button><label class="lbl" style="display:flex;align-items:center;gap:4px;margin:0"><input type="checkbox" id="ratioToggle" ${ui.exp.ratioMode ? 'checked' : ''} style="width:auto"> 割合入力</label>${ui.exp.ratioMode ? `<button class="btn ghost sm" id="allocRatio">割合で配分</button>` : ''}<button class="btn ghost sm" id="allocDup">前回この店の構成を複製</button>`; $('#allocRest').addEventListener('click', () => { syncExpFromDOM(); const tv = M.evalAmount(ui.exp.total); if (!ui.exp.total || Number.isNaN(tv)) return toast('購入合計を入れてください'); let sum = 0; for (let i = 0; i < ui.exp.debits.length - 1; i++) { const v = M.evalAmount(ui.exp.debits[i].amt); sum += Number.isNaN(v) ? 0 : v; } ui.exp.debits[ui.exp.debits.length - 1].amt = String(Math.round(tv - sum)); renderDebits(); recalcExpense(); }); $('#allocEven').addEventListener('click', () => { syncExpFromDOM(); const tv = M.evalAmount(ui.exp.total); if (!ui.exp.total || Number.isNaN(tv)) return toast('購入合計を入れてください'); const n = ui.exp.debits.length; const base = Math.floor(tv / n); const rem = tv - base * n; ui.exp.debits.forEach((d, i) => d.amt = String(base + (i < rem ? 1 : 0))); renderDebits(); recalcExpense(); }); $('#ratioToggle').addEventListener('change', e => { syncExpFromDOM(); ui.exp.ratioMode = e.target.checked; renderDebits(); renderAllocTools(); recalcExpense(); }); const ar = $('#allocRatio'); if (ar) ar.addEventListener('click', () => { syncExpFromDOM(); const tv = M.evalAmount(ui.exp.total); if (!ui.exp.total || Number.isNaN(tv)) return toast('購入合計を入れてください'); const weights = ui.exp.debits.map(d => { const w = M.evalAmount(d.ratio); return Number.isNaN(w) ? 0 : w; }); const wsum = weights.reduce((s, w) => s + w, 0); if (wsum <= 0) return toast('割合(重み)を入力してください'); let acc = 0; ui.exp.debits.forEach((d, i) => { if (i === ui.exp.debits.length - 1) d.amt = String(Math.round(tv - acc)); else { const v = Math.round(tv * weights[i] / wsum); d.amt = String(v); acc += v; } }); renderDebits(); recalcExpense(); }); $('#allocDup').addEventListener('click', () => { syncExpFromDOM(); const store = ui._store || ($('#f_store') ? $('#f_store').value : ''); if (!store) return toast('先に店名を入れてください'); const comp = M.lastStoreComposition(state, store); if (!comp) return toast('この店の過去の支出構成が見つかりません'); ui.exp.debits = comp.items.map(it => ({ path: it.catPath, amt: String(it.amount), ratio: '' })); renderDebits(); recalcExpense(); toast(`前回(${comp.date})の${comp.items.length}明細を複製しました`); }); }
   function renderCreditsExp() { const area = $('#creditArea'); if (!area) return; const opts = sel => accountOptions(a => a.subtype !== 'voucher_goods', sel); if (!ui.exp.detail) { const sel = ui.exp.credits[0] ? ui.exp.credits[0].accId : ''; area.innerHTML = `<div class="field"><label>支払手段（どこから）</label><select id="c_single">${opts(sel)}</select></div>`; return; } area.innerHTML = `<label>支払手段の内訳（貸方・複数可／カードのポイント払いもここで）</label>` + ui.exp.credits.map((c, i) => `<div class="credit-line" data-i="${i}"><div class="field" style="flex:2"><select class="c_acc">${opts(c.accId)}</select></div><div class="field amt"><input class="c_amt" inputmode="decimal" placeholder="金額(式可)" value="${esc(c.amt)}"></div><button class="btn ghost sm c_del">✕</button></div>`).join('') + `<button class="btn ghost sm" id="addCredit">＋貸方を追加</button>`; $$('.credit-line', area).forEach(line => { const i = +line.dataset.i; const acc = line.querySelector('.c_acc'), amt = line.querySelector('.c_amt'); acc.addEventListener('change', () => ui.exp.credits[i].accId = acc.value); amt.addEventListener('input', () => { ui.exp.credits[i].amt = amt.value; recalcExpense(); }); line.querySelector('.c_del').addEventListener('click', () => { syncExpFromDOM(); ui.exp.credits.splice(i, 1); if (!ui.exp.credits.length) ui.exp.credits.push({ accId: '', amt: '' }); renderCreditsExp(); recalcExpense(); }); }); $('#addCredit').addEventListener('click', () => { syncExpFromDOM(); ui.exp.credits.push({ accId: '', amt: '' }); renderCreditsExp(); recalcExpense(); }); attachHankakuAll(area); }
   function syncExpFromDOM() { $$('#debitArea .line-row').forEach(row => { const i = +row.dataset.i; const rat = row.querySelector('.d_ratio'); ui.exp.debits[i] = { path: row.querySelector('.d_cat').value, amt: row.querySelector('.d_amt').value, ratio: rat ? rat.value : (ui.exp.debits[i] ? ui.exp.debits[i].ratio : '') }; }); if (!ui.exp.detail) { const s = $('#c_single'); if (s) ui.exp.credits = [{ accId: s.value, amt: '' }]; } else $$('#creditArea .credit-line').forEach(line => { const i = +line.dataset.i; ui.exp.credits[i] = { accId: line.querySelector('.c_acc').value, amt: line.querySelector('.c_amt').value }; }); if ($('#f_total')) ui.exp.total = $('#f_total').value; if ($('#f_store')) ui._store = $('#f_store').value; if ($('#f_branch')) ui._branch = $('#f_branch').value; if ($('#f_date')) ui._date = $('#f_date').value; if ($('#f_memo')) ui._memo = $('#f_memo').value; }
@@ -101,13 +206,13 @@
         const rows = ui.exp.debits.filter(d => d.path);
         const parsed = rows.map(d => ({ catPath: d.path, raw: (d.amt || '').trim(), amount: M.evalAmount(d.amt) }));
         const invalid = parsed.filter(p => p.raw !== '' && Number.isNaN(p.amount));
-        const validItems = parsed.filter(p => p.raw !== '' && !Number.isNaN(p.amount) && p.amount);
+        parsed.forEach(p => { if (!Number.isNaN(p.amount)) p.amount = yenRound(p.amount); }); const validItems = parsed.filter(p => p.raw !== '' && !Number.isNaN(p.amount) && p.amount);
         if (!validItems.length) return toast('金額のある明細を1行以上入力してください');
         if (invalid.length) { if (!confirm(`⚠ 不正な金額の明細が ${invalid.length}件あります（例: "${invalid[0].raw}"）。\nその行を除いて登録しますか？`)) return; }
         const items = validItems.map(p => ({ catPath: p.catPath, amount: p.amount }));
         const dsum = items.reduce((s, it) => s + it.amount, 0);
         let credits;
-        if (ui.exp.detail) { const cInvalid = ui.exp.credits.filter(c => c.accId && (c.amt || '').trim() !== '' && Number.isNaN(M.evalAmount(c.amt))); if (cInvalid.length) { if (!confirm(`⚠ 支払手段に不正な金額があります。その行を除いて登録しますか？`)) return; } credits = ui.exp.credits.map(c => ({ accId: c.accId, amount: M.evalAmount(c.amt) })).filter(c => c.accId && c.amount && !Number.isNaN(c.amount)); const cs = credits.reduce((s, c) => s + c.amount, 0); if (Math.abs(cs - dsum) > 0.5) return toast(`貸方合計 ${yen(cs)} が明細合計 ${yen(dsum)} と一致しません`); } else { const accId = $('#c_single').value; if (!accId) return toast('支払手段を選んでください'); credits = [{ accId, amount: dsum }]; }
+        if (ui.exp.detail) { const cInvalid = ui.exp.credits.filter(c => c.accId && (c.amt || '').trim() !== '' && Number.isNaN(M.evalAmount(c.amt))); if (cInvalid.length) { if (!confirm(`⚠ 支払手段に不正な金額があります。その行を除いて登録しますか？`)) return; } credits = ui.exp.credits.map(c => ({ accId: c.accId, amount: evalYen(c.amt) })).filter(c => c.accId && c.amount && !Number.isNaN(c.amount)); const cs = credits.reduce((s, c) => s + c.amount, 0); if (Math.abs(cs - dsum) > 0.5) return toast(`貸方合計 ${yen(cs)} が明細合計 ${yen(dsum)} と一致しません`); } else { const accId = $('#c_single').value; if (!accId) return toast('支払手段を選んでください'); credits = [{ accId, amount: dsum }]; }
         t = M.buildExpense({ id, date, items, credits, store, branch, memo });
       }
       else if (type === 'income') { const amount = M.evalAmount($('#f_amount').value); if (!amount || Number.isNaN(amount)) return toast('金額を確認してください'); t = M.buildIncome({ id, date, accId: $('#f_acc').value, catPath: $('#f_cat').value, amount, store, branch, memo }); }
