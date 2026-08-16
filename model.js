@@ -10,7 +10,7 @@
     emoney:        { label: '電子マネー(金額型)', kind: 'asset',     manage: 'balance' },
     point:         { label: 'ポイント',          kind: 'asset',     manage: 'balance' },
     voucher_amount:{ label: '金券(金額型)',      kind: 'asset',     manage: 'balance' },
-    voucher_goods: { label: '現物券(原価主義)',  kind: 'asset',     manage: 'goods'   },
+    voucher_goods: { label: '現物券(額面評価)',  kind: 'asset',     manage: 'goods'   },
     transit:       { label: '交通系IC(簡易)',    kind: 'asset',     manage: 'simple'  },
     card:          { label: 'クレジットカード',  kind: 'liability', manage: 'balance' },
   };
@@ -99,7 +99,7 @@
   function buildTransfer({ id, date, fromAccId, toAccId, amount, store, branch, memo, kind, meta }) { return buildMulti({ id, date, debits: [{ ref: 'acc:' + toAccId, amount }], credits: [{ ref: 'acc:' + fromAccId, amount }], store, branch, memo, kind: kind || 'transfer', meta }); }
   function buildCardPayment({ id, date, cardAccId, credits, bankAccId, amount, cycleKey, payDate, memo }) { if (!credits) credits = [{ accId: bankAccId, amount }]; const total = credits.reduce((s, c) => s + c.amount, 0); return buildMulti({ id, date, debits: [{ ref: 'acc:' + cardAccId, amount: total }], credits: credits.map(c => ({ ref: 'acc:' + c.accId, amount: c.amount })), memo: memo || ('カード引落 ' + cycleKey), kind: 'card_payment', meta: { cardAccId, cycleKey, payDate } }); }
   function buildPrepaidAmount({ id, date, toAccId, face, paid, fromAccId, store, branch, memo }) { const debits = [{ ref: 'acc:' + toAccId, amount: face }]; const credits = [{ ref: 'acc:' + fromAccId, amount: paid }]; const premium = face - paid; if (Math.abs(premium) > 0.001) credits.push({ ref: 'cat:inc>プレミアム益', amount: premium }); return buildMulti({ id, date, debits, credits, store, branch, memo, kind: 'prepaid_amount' }); }
-  function buildPrepaidGoods({ id, date, toAccId, paid, qty, fromAccId, store, branch, memo }) { return buildMulti({ id, date, debits: [{ ref: 'acc:' + toAccId, amount: paid, qty }], credits: [{ ref: 'acc:' + fromAccId, amount: paid }], store, branch, memo, kind: 'prepaid_goods' }); }
+  function buildPrepaidGoods({ id, date, toAccId, face, paid, qty, fromAccId, store, branch, memo }) { face = (face == null ? paid : face); const debits = [{ ref: 'acc:' + toAccId, amount: face, qty }]; const credits = [{ ref: 'acc:' + fromAccId, amount: paid }]; const premium = face - paid; if (Math.abs(premium) > 0.001) credits.push({ ref: 'cat:inc>プレミアム益', amount: premium }); return buildMulti({ id, date, debits, credits, store, branch, memo, kind: 'prepaid_goods' }); }
   function buildGoodsUse({ id, date, catPath, fromAccId, unitCost, qty, store, branch, memo }) { const amount = Math.round(unitCost * qty); return buildMulti({ id, date, debits: [{ ref: 'cat:' + catPath, amount }], credits: [{ ref: 'acc:' + fromAccId, amount, qty }], store, branch, memo, kind: 'goods_use' }); }
 
   function ymIndex(ym) { const [y, m] = ym.split('-').map(Number); return y * 12 + (m - 1); }
