@@ -399,3 +399,13 @@ svg .bar-exp{fill:var(--danger)}
 .cat-row .cat-actions{display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end}
 .cat-row.level-1{margin-left:18px}.cat-row.level-2{margin-left:36px}.cat-row.unused{opacity:.86}
 @media(max-width:760px){.cat-row{grid-template-columns:1fr;gap:6px}.cat-row.level-1,.cat-row.level-2{margin-left:0}.cat-row .cat-actions{justify-content:flex-start}}
+
+
+/* v1.6.2k mixed payment layout */
+.credit-line{flex-wrap:wrap;align-items:flex-end;gap:8px}
+.credit-line .credit-account-field{flex:1 1 320px!important;min-width:260px;margin:0}
+.credit-line .credit-amt-field{flex:0 0 150px;margin:0}
+.credit-line .c_acc{min-width:260px;width:100%}
+.credit-line .c_del{flex:0 0 auto;margin-bottom:0}
+.credit-line .c_after{line-height:1.45;padding-left:2px}
+@media(max-width:760px){.credit-line{display:grid;grid-template-columns:1fr auto;align-items:end}.credit-line .credit-account-field{grid-column:1 / -1;min-width:0}.credit-line .credit-amt-field{grid-column:auto;min-width:0;flex:auto}.credit-line .c_after{grid-column:1 / -1}.credit-line .c_del{grid-column:2}}
