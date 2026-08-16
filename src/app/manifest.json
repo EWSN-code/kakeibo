@@ -1,5 +1,5 @@
 {
-  "version": "v1.6.2h",
+  "version": "v1.6.2i",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
   "parts": [
@@ -9,7 +9,7 @@
     },
     {
       "file": "10_entry.part.js",
-      "description": "Entry and receipt input v1.6.2h"
+      "description": "Entry and receipt input v1.6.2i"
     },
     {
       "file": "20_list.part.js",
@@ -48,5 +48,5 @@
       "description": "Navigation boot"
     }
   ],
-  "bundle_sha256": "e6992ca7e9c1b673cf47e6dfc6b7d2b45f2837968ce096d95a3814c357af212f"
+  "bundle_sha256": "69c832613ee4cb7f9588f55224026582876d1ed7df6b7f1a472e406c8dfa04ca"
 }
