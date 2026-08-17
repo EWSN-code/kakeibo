@@ -145,13 +145,18 @@
     let qty = (acc.goods && acc.goods.openingQty) || 0;
     state.transactions.forEach((t, idx) => {
       if (excludeId && t.id === excludeId) return;
-      const before = t.date < targetDate || (t.date === targetDate && idx < targetIdx) || (!excludeId && t.date === targetDate);
-      if (!before) return;
+      if (t.date > targetDate) return;
+      const sameDay = t.date === targetDate;
+      const beforeByOrder = !sameDay || idx < targetIdx;
       t.lines.forEach(l => {
-        if (l.ref === 'acc:' + accId) {
-          amount += l.amount || 0;
-          if (typeof l.qty === 'number') qty += l.qty;
-        }
+        if (l.ref !== 'acc:' + accId) return;
+        const q = (typeof l.qty === 'number') ? l.qty : 0;
+        const isSameDayIncoming = sameDay && (q > 0 || l.amount > 0);
+        // 同日購入→同日利用を安定させるため、同日の購入/入庫は配列順に関係なく利用可能として含める。
+        // 同日の利用/出庫は、編集中取引より前のものだけ含める。新規入力時はその日の既存利用も含める。
+        if (!beforeByOrder && !isSameDayIncoming) return;
+        amount += l.amount || 0;
+        if (typeof l.qty === 'number') qty += l.qty;
       });
     });
     return { amount, qty };

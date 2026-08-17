@@ -1,5 +1,5 @@
 {
-  "version": "v1.6.2n",
+  "version": "v1.6.2o",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
   "parts": [
@@ -9,7 +9,7 @@
     },
     {
       "file": "10_entry.part.js",
-      "description": "Entry and voucher face history"
+      "description": "Entry and voucher same-day purchase fix"
     },
     {
       "file": "20_list.part.js",
@@ -21,7 +21,7 @@
     },
     {
       "file": "40_accounts_cards.part.js",
-      "description": "Accounts and voucher face history"
+      "description": "Accounts and cards"
     },
     {
       "file": "50_report_analysis_period.part.js",
@@ -48,5 +48,5 @@
       "description": "Navigation boot"
     }
   ],
-  "bundle_sha256": "37ebd424b47e855e486e1725d3f605e2db105bfe1f55d0366b1e378c30ceebca"
+  "bundle_sha256": "15c9ec464a8f3f83d0166c6d810c4e6f1494871768031f307a65ec91b615fd25"
 }
