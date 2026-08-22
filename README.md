@@ -1,3 +1,1 @@
-# app.js source split (v1.6.2p)
-
-Runtime still loads `app.js`. Edit `src/app/*.part.js` and run `python3 tools/build_app.py` to rebuild.
+# app.js source split (v1.6.2q)
