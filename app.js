@@ -655,7 +655,7 @@ function gotoListWithCategory(path, label) { listCategoryFilter = { path, label:
 
   /* ============ レポート ============ */
 
-  /* ============ 分析 v1.7.0：期間選択 ============ */
+  /* ============ 分析 v1.7.0b：期間選択 ============ */
   function analysisPeriod() {
     const base = currentYM();
     const mode = ($('#drillRange') ? $('#drillRange').value : 'month') || 'month';
@@ -707,11 +707,11 @@ function gotoListWithCategory(path, label) { listCategoryFilter = { path, label:
     const mx = Math.max(1, s.income, s.expense); const barsHtml = `<div class="ov-bars"><div class="ov-bar inc"><div class="cap"><span>収入</span><span>${yen(s.income)}</span></div><div class="track"><span style="width:${s.income / mx * 100}%"></span></div></div><div class="ov-bar exp"><div class="cap"><span>支出</span><span>${yen(s.expense)}</span></div><div class="track"><span style="width:${s.expense / mx * 100}%"></span></div></div></div>`;
     const eb = periodTop('expense', p); const eEntries = Object.entries(eb).sort((a,b)=>b[1]-a[1]); const eTotal = eEntries.reduce((a,e)=>a+e[1],0); const eDonut = drawDonut(eEntries.slice(0,8), eTotal, true); const eList = eEntries.slice(0,6).map((e,i)=>`<div class="drill-row leaf"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${categoryColor('exp>'+e[0])}"></span><span class="dn">${esc(e[0])}</span><span class="dpct">${M.pct(e[1], eTotal)}%</span><span class="dv">${yen(e[1])}</span></div>`).join('') || `<p class="muted">支出なし</p>`;
     const ib = periodTop('income', p); const iEntries = Object.entries(ib).sort((a,b)=>b[1]-a[1]); const iTotal = iEntries.reduce((a,e)=>a+e[1],0); const iList = iEntries.slice(0,6).map((e,i)=>`<div class="drill-row leaf"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${categoryColor('inc>'+e[0])}"></span><span class="dn">${esc(e[0])}</span><span class="dpct">${M.pct(e[1], iTotal)}%</span><span class="dv">${yen(e[1])}</span></div>`).join('') || `<p class="muted">収入なし</p>`;
-    body.innerHTML = cardsHtml + barsHtml + `<div class="ov-cols"><div class="ov-col"><h4>費用の内訳 <span class="goto" data-goto="expense">費用を掘り下げる ›</span></h4><div class="chart-wrap" style="margin-bottom:8px">${eDonut.svg}<div style="flex:1;min-width:180px">${eList}</div></div></div><div class="ov-col"><h4>収入の内訳 <span class="goto" data-goto="income">収入を掘り下げる ›</span></h4>${iList}</div></div>`;
+    body.innerHTML = cardsHtml + barsHtml + drawCategoryTrend('expense', [], p, '支出カテゴリの月別推移') + `<div class="ov-cols"><div class="ov-col"><h4>費用の内訳 <span class="goto" data-goto="expense">費用を掘り下げる ›</span></h4><div class="chart-wrap" style="margin-bottom:8px">${eDonut.svg}<div style="flex:1;min-width:180px">${eList}</div></div></div><div class="ov-col"><h4>収入の内訳 <span class="goto" data-goto="income">収入を掘り下げる ›</span></h4>${iList}</div></div>`;
     $$('[data-goto]', body).forEach(b => b.addEventListener('click', () => gotoDrill(b.dataset.goto)));
   }
   function renderDrilldown(body, p, kind) {
-    body.innerHTML = `<div class="acc-sub" style="margin-bottom:8px">対象期間：${esc(p.label)}</div><div class="crumb" id="drillCrumb"></div><div class="chart-wrap" style="margin-bottom:16px"><div id="drillDonut"></div><div class="donut-legend" id="drillList" style="min-width:280px"></div></div><div id="drillDetail"></div>`;
+    body.innerHTML = `<div class="acc-sub" style="margin-bottom:8px">対象期間：${esc(p.label)}</div><div class="crumb" id="drillCrumb"></div><div class="chart-wrap" style="margin-bottom:16px"><div id="drillDonut"></div><div class="donut-legend" id="drillList" style="min-width:280px"></div></div><div id="drillTrend"></div><div id="drillDetail"></div>`;
     const crumbs = [`<span class="seg" data-depth="0">${kind === 'income' ? '収入' : '費用'} 全体</span>`]; drill.parts.forEach((part,i)=>{ crumbs.push(`<span class="sep">›</span><span class="seg" data-depth="${i+1}">${esc(part)}</span>`); }); $('#drillCrumb', body).innerHTML = crumbs.join(' '); $$('#drillCrumb .seg', body).forEach(seg => seg.addEventListener('click', () => { drill.parts = drill.parts.slice(0, +seg.dataset.depth); drill.leaf = null; renderDrill(); }));
     const res = drillCategoryPeriod(kind, drill.parts, p); const entries = res.children.map(c => [c.segment, c.total]); $('#drillDonut', body).innerHTML = drawDonut(entries, res.total, true).svg; const max = Math.max(1, ...res.children.map(c => c.total));
     $('#drillList', body).innerHTML = res.children.length ? res.children.map((c,i)=>`<div class="drill-row ${c.hasChildren ? '' : 'leaf'}" data-seg="${esc(c.segment)}" data-leaf="${c.hasChildren ? 0 : 1}"><div style="flex:1"><div style="display:flex;align-items:center;gap:10px"><span class="sw" style="width:12px;height:12px;border-radius:3px;background:${categoryColor(categoryPath(kind,c.path))}"></span><span class="dn">${esc(c.segment)}</span><span class="dbar"><span class="bar"><span style="width:${c.total / max * 100}%"></span></span></span><span class="dpct">${M.pct(c.total, res.total)}%</span><span class="dv">${yen(c.total)}</span><span class="dc">${c.count}件</span><span class="drill-arrow">${c.hasChildren ? '▶' : ''}</span></div></div></div>`).join('') : `<p class="muted">この期間の${kind === 'income' ? '収入' : '支出'}はありません。</p>`;
@@ -845,7 +845,7 @@ function renderThemeSettings() { const preset = $('#themePreset'), accent = $('#
 
   
 
-/* ============ Excelインポート（移行専用 v1.7.0） ============ */
+/* ============ Excelインポート（移行専用 v1.7.0b） ============ */
 let excelImport = null;
 const XL_GOODS = ['らんぷチケット','コメダチケット','るぱんチケット','松屋コーヒーチケット','松屋チケット','星野チケット','株主優待券'];
 function xlStr(v){ return v == null ? '' : String(v).trim(); }
@@ -869,7 +869,7 @@ function xlParseSheet(name,ws){
 }
 function xlOpenModal(){
  const opts=excelImport.sheets.map((s,i)=>`<option value="${i}" ${i===excelImport.selected?'selected':''}>${esc(s.name)}（${s.rows.length}行）</option>`).join('');
- $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.7.0）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
+ $('#modal').innerHTML=`<h3>Excel読込（移行専用 v1.7.0b）</h3><p class="hint">Excel家計簿を複式形式へ変換します。Sheet1が抜粋、Sheet2が全期間の場合はSheet2を選んでください。</p><div class="field"><label>取込シート</label><select id="xl_sheet">${opts}</select></div><div id="xl_preview"></div><div class="field"><label>取込方法</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="replace" checked style="width:auto"> <b>移行用に置き換え</b>：口座と取引をExcelベースに置換（おすすめ）</label><label style="margin:6px 0"><input type="radio" name="xl_mode" value="append" style="width:auto"> <b>追加</b>：既存データを残して取引を追加</label></div><div class="actions"><button class="btn ghost" id="xl_cancel">キャンセル</button><button class="btn" id="xl_ok">取り込む</button></div>`;
  $('#xl_cancel').addEventListener('click',closeModal); $('#xl_sheet').addEventListener('change',e=>{excelImport.selected=+e.target.value;xlPreview();}); $('#xl_ok').addEventListener('click',xlCommit); xlPreview(); showModal();
 }
 function xlRawAccounts(sheet){ const set=new Set(); sheet.rows.forEach(r=>[r.credit,r.pay].forEach(x=>{if(x)set.add(x)})); return [...set].sort((a,b)=>a.localeCompare(b,'ja')); }
@@ -884,7 +884,7 @@ function xlBuild(sheet){
  function impact(name,delta,balance,sub){ const a=acc(name,sub); const before=cum.get(a.name)||0; if(balance!=null&&!open.has(a.name)) open.set(a.name,Math.round(balance-before-delta)); cum.set(a.name,before+delta); }
  sheet.rows.forEach(r=>{ const c=xlClass(r,ticketUnit); c.accs.forEach(x=>acc(x.name,x.sub)); c.impacts.forEach(x=>impact(x.name,x.delta,x.balance,x.sub)); if(c.goods){ usedAmt.set(c.goods.name,(usedAmt.get(c.goods.name)||0)+c.goods.amount); usedQty.set(c.goods.name,(usedQty.get(c.goods.name)||0)+1); } if(c.cat)xlEnsurePath(cats,c.cat); });
  accounts.forEach(a=>{ if(open.has(a.name)) a.opening=open.get(a.name); if(a.subtype==='voucher_goods'&&!open.has(a.name)){ const q=usedQty.get(a.name)||0, am=usedAmt.get(a.name)||0; if(q){a.opening=am;a.goods=a.goods||{};a.goods.openingQty=q;} } });
- const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.7.0',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
+ const txs=[]; sheet.rows.forEach(r=>{ try{ const c=xlClass(r,ticketUnit); const t=xlTx(r,c,acc,report); if(t){t.id=`xls_${xlSlug(sheet.name)}_${r.rowNo}`; t.meta=Object.assign({},t.meta||{},{importedFrom:'excel-v1.7.0b',sheet:sheet.name,rowNo:r.rowNo,excel:{kou:r.kou,me:r.me,sai:r.sai,medical:r.medical,memo:r.memo}}); txs.push(t);} }catch(e){report.issues.push(`${r.rowNo}行目: ${e.message}`);} });
  accounts.sort((a,b)=>a.name.localeCompare(b.name,'ja')); return {accounts,transactions:txs,categories:cats,report};
 }
 function xlClass(r,ticketUnit){ const accs=[],impacts=[]; const aa=(name,sub)=>{name=xlNormAcc(name); if(name)accs.push({name,sub:sub||xlSubtype(name)});}; const ii=(name,delta,balance,sub)=>{name=xlNormAcc(name); if(name)impacts.push({name,delta,balance,sub:sub||xlSubtype(name)});}; let cat='', type='', amount=Math.abs(r.expense||r.income||0), from='', to='', face=0, paid=0, qty=0, goods=null, medical=xlMedical(r);
