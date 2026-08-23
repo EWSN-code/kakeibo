@@ -431,3 +431,23 @@ svg .bar-exp{fill:var(--danger)}
 .category-color-preview span{width:34px;height:34px;border-radius:9px;border:1px solid rgba(255,255,255,.3)}
 .category-color-preview b{flex:1}.category-color-preview code{color:var(--muted)}
 #cc_h,#cc_s,#cc_l{padding:0;accent-color:var(--accent)}
+
+/* v1.7.0e mobile trends and category color presets */
+.category-preset-list{display:grid;gap:10px}
+.category-preset-card{width:100%;text-align:left;background:var(--panel2);border:1px solid var(--line);color:var(--text);border-radius:11px;padding:12px;cursor:pointer}
+.category-preset-card:hover{border-color:var(--accent)}
+.category-preset-card b{display:block;margin-bottom:8px}
+.category-preset-card code{display:block;color:var(--muted);font-size:10px;white-space:normal;overflow-wrap:anywhere;margin-top:8px}
+.category-preset-swatches{display:flex;gap:4px;flex-wrap:wrap}
+.category-preset-swatches i{display:block;width:22px;height:22px;border-radius:6px;border:1px solid rgba(255,255,255,.28)}
+@media(max-width:760px){
+  .trend-panel{max-width:100%;overflow:hidden}
+  .trend-scroll{width:100%;max-width:100%;overscroll-behavior-inline:contain;scroll-snap-type:x proximity;padding-bottom:4px}
+  .trend-scroll svg{height:266px;min-width:520px}
+  .trend-legend{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:7px 10px;width:100%}
+  .trend-legend-item{min-width:0;display:grid;grid-template-columns:11px minmax(0,1fr);align-items:center;line-height:1.25}
+  .trend-legend-item i{width:11px;height:11px}
+  .trend-legend-item{overflow-wrap:anywhere;word-break:break-word}
+  .category-preset-swatches i{width:18px;height:18px}
+}
+@media(max-width:390px){.trend-legend{grid-template-columns:1fr}}
