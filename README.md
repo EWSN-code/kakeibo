@@ -1,1 +1,1 @@
-# app.js source split (v1.7.0b)
+# app.js source split (v1.7.0c)
