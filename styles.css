@@ -451,3 +451,9 @@ svg .bar-exp{fill:var(--danger)}
   .category-preset-swatches i{width:18px;height:18px}
 }
 @media(max-width:390px){.trend-legend{grid-template-columns:1fr}}
+
+/* v1.7.0f sibling colors, economic point adjustment, card cycle override */
+.economic-adjustment{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:10px 12px;margin:8px 0 12px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.economic-adjustment span{color:var(--accent2)}.economic-adjustment strong{margin-left:auto}.economic-adjustment p{flex:1 1 100%;margin:0;color:var(--muted);font-size:12px}
+.card-cycle-override{margin:8px 0 12px;padding:9px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.card-cycle-override summary{cursor:pointer;color:var(--muted);font-size:12px}
