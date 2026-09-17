@@ -1,0 +1,631 @@
+/* =====================================================================
+ * ui-refresh.css
+ * Visual refresh layer for the ui-refresh branch.
+ * Keeps existing application behaviour intact while improving hierarchy,
+ * density, mobile ergonomics and the overall visual language.
+ * ===================================================================== */
+
+:root{
+  --radius:10px;
+  --shadow:0 10px 30px rgba(0,0,0,.16);
+  --surface-soft:color-mix(in srgb,var(--panel2) 72%,var(--bg));
+  --surface-hover:color-mix(in srgb,var(--panel2) 86%,var(--text) 3%);
+  --line-soft:color-mix(in srgb,var(--line) 72%,transparent);
+  --focus-ring:0 0 0 3px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+
+body{
+  font-size:14px;
+  letter-spacing:.005em;
+}
+
+.app{
+  max-width:1180px;
+  padding:20px;
+  padding-top:max(18px,env(safe-area-inset-top));
+}
+
+/* ---------- hierarchy / surfaces ---------- */
+.panel{
+  background:var(--panel);
+  border-color:var(--line-soft);
+  box-shadow:none;
+  padding:18px;
+  margin-bottom:18px;
+}
+
+.section-title{
+  margin-bottom:14px;
+}
+
+.section-title h3,
+.panel > h3{
+  font-size:15px;
+  font-weight:700;
+  letter-spacing:.01em;
+}
+
+.stat{
+  background:transparent;
+  border:0;
+  border-radius:0;
+  padding:10px 12px 12px;
+  border-left:1px solid var(--line-soft);
+}
+
+.stat:first-child{border-left:0}
+.stat .k{font-size:11px;letter-spacing:.02em}
+.stat .v{font-size:26px;line-height:1.15;margin-top:6px;letter-spacing:-.02em}
+.stat .sub{margin-top:5px}
+
+.acc-sub,.hint,label{color:color-mix(in srgb,var(--muted) 94%,var(--text))}
+
+/* ---------- header / desktop navigation ---------- */
+header.top{
+  min-height:46px;
+  gap:14px;
+  margin-bottom:10px;
+}
+
+header.top .brand{
+  font-size:19px;
+  letter-spacing:-.01em;
+}
+
+header.top .brand small{
+  opacity:.65;
+}
+
+.tabs{
+  gap:2px;
+  margin-bottom:22px;
+  border-bottom-color:var(--line-soft);
+}
+
+.tabs button{
+  padding:9px 12px;
+  border-radius:0;
+  font-size:13px;
+}
+
+.tabs button:hover{
+  background:transparent;
+  color:var(--text);
+}
+
+.tabs button.active{
+  border-bottom-width:2px;
+}
+
+.monthnav button,
+.hamburger{
+  border-color:var(--line-soft);
+  box-shadow:none;
+}
+
+/* ---------- forms ---------- */
+input,select,textarea{
+  background:var(--surface-soft);
+  border-color:var(--line-soft);
+  border-radius:8px;
+  padding:10px 11px;
+  transition:border-color .15s,box-shadow .15s,background .15s;
+}
+
+input:hover,select:hover,textarea:hover{
+  border-color:color-mix(in srgb,var(--line) 70%,var(--text));
+}
+
+input:focus,select:focus,textarea:focus{
+  border-color:var(--accent);
+  box-shadow:var(--focus-ring);
+}
+
+button:focus-visible,.drill-row:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+
+.btn{
+  border-radius:8px;
+  box-shadow:none;
+  transition:transform .12s,filter .12s,background .12s,border-color .12s;
+}
+
+.btn:active{transform:translateY(1px)}
+.btn.ghost{border-color:var(--line-soft)}
+
+.typebar{
+  gap:4px;
+  padding:4px;
+  border:1px solid var(--line-soft);
+  background:var(--surface-soft);
+  border-radius:10px;
+  width:max-content;
+  max-width:100%;
+  overflow-x:auto;
+  flex-wrap:nowrap;
+  scrollbar-width:none;
+}
+
+.typebar::-webkit-scrollbar{display:none}
+.typebar button{
+  border:0;
+  background:transparent;
+  padding:8px 13px;
+  border-radius:7px;
+  white-space:nowrap;
+}
+
+.typebar button.active{
+  background:var(--accent);
+  box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+
+.chip-btn,.tpl-chip,.settings-subtabs button,.crumb .seg{
+  border-color:var(--line-soft);
+  background:transparent;
+}
+
+.chip-btn:hover,.tpl-chip:hover,.crumb .seg:hover{
+  background:var(--surface-soft);
+}
+
+/* ---------- entry ---------- */
+#tab-entry > .panel{
+  max-width:820px;
+  margin-left:auto;
+  margin-right:auto;
+}
+
+#tab-entry .lines-head{
+  margin-top:16px;
+}
+
+#tab-entry .line-row{
+  padding:9px 0;
+  border-bottom:1px solid var(--line-soft);
+  margin-bottom:0;
+}
+
+#tab-entry .line-row:last-child{border-bottom:0}
+
+#tab-entry .totline{
+  background:transparent;
+  border:0;
+  border-top:1px solid var(--line-soft);
+  border-bottom:1px solid var(--line-soft);
+  border-radius:0;
+  padding:11px 2px;
+}
+
+#tab-entry .totline .v{
+  font-size:18px;
+}
+
+#tab-entry .toggle-detail{
+  padding:8px 0;
+}
+
+/* ---------- analysis ---------- */
+#tab-drill > .panel{
+  padding-top:16px;
+}
+
+#drillBody > .grid.cols-4{
+  border-top:1px solid var(--line-soft);
+  border-bottom:1px solid var(--line-soft);
+  gap:0;
+  padding:5px 0;
+}
+
+.ov-bars{
+  margin:18px 0 22px;
+}
+
+.ov-col{
+  border-color:var(--line-soft)!important;
+  box-shadow:none!important;
+}
+
+.drill-row{
+  background:transparent;
+  border-color:transparent;
+  border-radius:7px;
+  margin-bottom:2px;
+  padding:9px 8px;
+}
+
+.drill-row:hover{
+  background:var(--surface-soft);
+  border-color:transparent;
+}
+
+.bar{
+  height:6px;
+  background:color-mix(in srgb,var(--panel2) 88%,var(--bg));
+}
+
+/* ---------- desktop transaction list ---------- */
+#tab-list > .panel{
+  padding:16px 18px;
+}
+
+.filters{
+  padding-bottom:14px;
+  border-bottom:1px solid var(--line-soft);
+  margin-bottom:10px;
+}
+
+#txListWrap{
+  max-height:68vh;
+}
+
+#txTable th{
+  background:var(--panel);
+  border-bottom-color:var(--line-soft);
+  padding-top:10px;
+  padding-bottom:10px;
+}
+
+#txTable td{
+  padding-top:11px;
+  padding-bottom:11px;
+  border-bottom-color:var(--line-soft);
+}
+
+#txTable tbody tr:hover{
+  background:var(--surface-soft);
+}
+
+.tag{
+  background:transparent;
+  border-color:var(--line-soft);
+}
+
+/* ---------- account / cards / misc lists ---------- */
+.acc-row{
+  padding:12px 2px;
+  border-bottom-color:var(--line-soft);
+}
+
+.cycle-row,.sim-box,.trend-panel,.pl-item{
+  background:transparent;
+  border-color:var(--line-soft);
+  box-shadow:none;
+}
+
+/* ---------- modal ---------- */
+.modal{
+  border-color:var(--line-soft);
+  box-shadow:0 24px 70px rgba(0,0,0,.38);
+}
+
+.modal-bg{
+  background:rgba(2,8,14,.68);
+  backdrop-filter:blur(4px);
+}
+
+/* =====================================================================
+ * Mobile
+ * ===================================================================== */
+@media(max-width:760px){
+  :root{--bottom-h:62px}
+
+  body{font-size:14px}
+
+  .app{
+    padding:8px 12px;
+    padding-top:max(8px,env(safe-area-inset-top));
+    padding-bottom:calc(var(--bottom-h) + env(safe-area-inset-bottom) + 18px);
+  }
+
+  /* compact app bar */
+  header.top{
+    position:sticky;
+    top:0;
+    z-index:55;
+    display:grid;
+    grid-template-columns:auto 1fr auto;
+    align-items:center;
+    min-height:48px;
+    margin:0 -12px 10px;
+    padding:6px 12px;
+    padding-top:max(6px,env(safe-area-inset-top));
+    background:color-mix(in srgb,var(--bg) 90%,transparent);
+    border-bottom:1px solid var(--line-soft);
+    backdrop-filter:blur(16px);
+  }
+
+  header.top .brand{
+    display:none;
+  }
+
+  .cur-tab{
+    display:block;
+    font-size:17px;
+    grid-column:1;
+    font-weight:750;
+    letter-spacing:-.01em;
+  }
+
+  header.top .spacer{display:none}
+
+  .account-bar{
+    grid-column:3;
+    grid-row:1;
+    width:auto;
+    min-width:0;
+    justify-content:flex-end;
+    flex-wrap:nowrap;
+    gap:4px;
+  }
+
+  .account-bar .acc-mail{
+    display:none;
+  }
+
+  .account-bar .btn{
+    padding:6px 8px;
+    min-height:32px;
+  }
+
+  .monthnav{
+    grid-column:2;
+    grid-row:1;
+    width:auto;
+    justify-self:center;
+    justify-content:center;
+    gap:3px;
+  }
+
+  .monthnav input[type=month]{
+    width:128px;
+    flex:none;
+    border:0;
+    background:transparent;
+    padding:6px 4px;
+    text-align:center;
+    font-size:13px;
+    box-shadow:none;
+  }
+
+  .monthnav button{
+    width:28px;
+    height:28px;
+    border:0;
+    background:transparent;
+  }
+
+  .monthnav .today-btn{display:none}
+
+  .panel{
+    border:0;
+    background:transparent;
+    border-radius:0;
+    padding:10px 0;
+    margin-bottom:14px;
+  }
+
+  .section-title{margin-bottom:12px}
+
+  .bottom-nav{
+    height:calc(var(--bottom-h) + env(safe-area-inset-bottom));
+    background:color-mix(in srgb,var(--panel) 94%,transparent);
+    border-top-color:var(--line-soft);
+    backdrop-filter:blur(16px);
+  }
+
+  .bottom-nav button{
+    gap:4px;
+  }
+
+  .bottom-nav .bn-ic{
+    font-size:19px;
+  }
+
+  .bottom-nav .bn-tx{
+    font-size:10px;
+    font-weight:600;
+  }
+
+  .bottom-nav button.active .bn-ic{
+    transform:translateY(-1px);
+  }
+
+  /* entry: content first, action always reachable */
+  #tab-entry > .panel{
+    padding-top:2px;
+  }
+
+  #tab-entry .typebar{
+    width:100%;
+    margin-bottom:16px;
+  }
+
+  #tab-entry .typebar button{
+    flex:0 0 auto;
+  }
+
+  #tab-entry .line-row{
+    background:transparent;
+    border:0;
+    border-bottom:1px solid var(--line-soft);
+    border-radius:0;
+    padding:10px 0 12px;
+  }
+
+  #tab-entry .line-row .amt input{
+    font-size:20px;
+    font-weight:700;
+    text-align:right;
+    letter-spacing:-.02em;
+  }
+
+  #tab-entry #submit{
+    position:sticky;
+    bottom:calc(var(--bottom-h) + env(safe-area-inset-bottom) + 8px);
+    z-index:42;
+    width:100%;
+    min-height:48px;
+    margin-top:12px;
+    border-radius:12px;
+    box-shadow:0 10px 28px rgba(0,0,0,.28);
+  }
+
+  /* analysis: 2 x 2 metrics instead of four stacked cards */
+  #drillBody > .grid.cols-4,
+  #reportCards.grid.cols-4{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+    gap:0;
+  }
+
+  #drillBody .stat,
+  #reportCards .stat{
+    border-left:0;
+    border-bottom:1px solid var(--line-soft);
+    padding:12px 8px;
+  }
+
+  #drillBody .stat:nth-child(odd),
+  #reportCards .stat:nth-child(odd){border-right:1px solid var(--line-soft)}
+
+  #drillBody .stat .v,
+  #reportCards .stat .v{font-size:23px}
+
+  /* filter area is compact but still exposes all current controls */
+  .filters{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:8px;
+    padding:0 0 12px;
+  }
+
+  .filters .field{
+    min-width:0;
+    width:100%;
+  }
+
+  .filters .field:nth-child(4){
+    grid-column:1 / -1;
+    grid-row:1;
+  }
+
+  .filters .field:nth-child(4) label{display:none}
+  .filters .field:nth-child(4) input{
+    min-height:42px;
+    border-radius:12px;
+    padding-left:13px;
+  }
+
+  .filters .btn{
+    width:100%;
+  }
+
+  /* transaction table -> native-feeling card list without JS changes */
+  #txListWrap{
+    overflow:visible;
+    max-height:none;
+  }
+
+  #txTable,
+  #txTable tbody{
+    display:block;
+    width:100%;
+  }
+
+  #txTable thead{
+    position:absolute!important;
+    width:1px!important;
+    height:1px!important;
+    padding:0!important;
+    margin:-1px!important;
+    overflow:hidden!important;
+    clip:rect(0,0,0,0)!important;
+    white-space:nowrap!important;
+    border:0!important;
+  }
+
+  #txTable tbody tr{
+    display:grid;
+    grid-template-columns:28px minmax(0,1fr) auto;
+    grid-template-areas:
+      "chk store amount"
+      "chk debit amount"
+      "chk date tag"
+      "chk credit actions";
+    gap:3px 8px;
+    align-items:center;
+    padding:12px 0;
+    border-bottom:1px solid var(--line-soft);
+    background:transparent;
+  }
+
+  #txTable tbody tr:hover{background:transparent}
+  #txTable tbody tr.sel{background:color-mix(in srgb,var(--accent) 8%,transparent)}
+
+  #txTable tbody td{
+    display:block;
+    min-width:0;
+    padding:0;
+    border:0;
+  }
+
+  #txTable tbody td:nth-child(1){grid-area:chk;align-self:start;padding-top:3px}
+  #txTable tbody td:nth-child(2){grid-area:date;color:var(--muted);font-size:11px}
+  #txTable tbody td:nth-child(3){grid-area:tag;justify-self:end}
+  #txTable tbody td:nth-child(4){grid-area:debit;color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #txTable tbody td:nth-child(5){grid-area:credit;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #txTable tbody td:nth-child(5)::before{content:"支払  ";opacity:.68}
+  #txTable tbody td:nth-child(6){grid-area:store;font-size:15px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  #txTable tbody td:nth-child(7){grid-area:amount;align-self:start;font-size:16px;font-weight:750;letter-spacing:-.015em;padding-top:1px}
+  #txTable tbody td:nth-child(8){grid-area:actions;justify-self:end;white-space:nowrap!important}
+
+  #txTable tbody td:nth-child(8) .btn{
+    padding:5px 8px;
+    font-size:11px;
+    min-height:30px;
+  }
+
+  #txTable tbody tr > td[colspan]{
+    grid-column:1 / -1;
+    display:block;
+    padding:24px 0!important;
+  }
+
+  .bulkbar{
+    position:sticky;
+    top:56px;
+    z-index:45;
+    margin:0 0 10px;
+    background:color-mix(in srgb,var(--panel) 95%,var(--accent) 5%);
+    border-color:var(--line-soft);
+    box-shadow:0 8px 22px rgba(0,0,0,.18);
+  }
+
+  /* drawers and sheets */
+  .drawer{
+    width:min(88vw,330px);
+  }
+
+  .drawer-item{
+    border-radius:7px;
+    padding:13px 12px;
+  }
+
+  .drawer-item.active{
+    background:color-mix(in srgb,var(--accent) 13%,transparent);
+  }
+
+  .modal{
+    border:0;
+    border-top:1px solid var(--line-soft);
+    border-radius:18px 18px 0 0;
+  }
+}
+
+@media(max-width:390px){
+  .monthnav input[type=month]{width:112px;font-size:12px}
+  .account-bar .btn{padding:5px 6px;font-size:11px}
+  #txTable tbody td:nth-child(8) .btn{padding:4px 6px}
+}
