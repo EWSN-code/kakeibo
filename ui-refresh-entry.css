@@ -1,0 +1,118 @@
+/* =====================================================================
+ * ui-refresh-entry.css — entry form progressive disclosure (v1.8.0-ui.2)
+ * ===================================================================== */
+
+.ui-entry-disclosure{
+  margin:8px 0 10px;
+}
+
+.ui-entry-disclosure > button{
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  padding:5px 2px;
+  font:inherit;
+  font-size:12px;
+  cursor:pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+}
+
+.ui-entry-disclosure > button:hover{
+  color:var(--text);
+}
+
+.ui-entry-disclosure > button::before{
+  content:'＋';
+  font-size:14px;
+  line-height:1;
+}
+
+.ui-entry-disclosure.open > button::before{
+  content:'−';
+}
+
+.ui-entry-optional{
+  margin-top:6px;
+}
+
+.ui-entry-optional[hidden]{
+  display:none!important;
+}
+
+.ui-entry-date-nav{
+  display:flex;
+  gap:4px;
+  align-items:center;
+}
+
+.ui-entry-date-nav .ui-date-step{
+  flex:0 0 34px;
+  width:34px;
+  min-width:34px;
+  height:38px;
+  padding:0;
+  border:1px solid var(--line-soft,var(--line));
+  border-radius:8px;
+  background:var(--surface-soft,var(--panel2));
+  color:var(--text);
+  font-size:17px;
+  cursor:pointer;
+}
+
+.ui-entry-date-nav .ui-date-step:hover{
+  border-color:var(--accent);
+}
+
+.ui-entry-date-nav input[type=date]{
+  min-width:0;
+}
+
+.ui-entry-date-nav .today-btn{
+  height:38px;
+}
+
+@media(max-width:760px){
+  #tab-entry .row:has(#f_store){
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(112px,.72fr);
+    gap:8px;
+  }
+
+  #tab-entry .row:has(#f_store) > .field:first-child{
+    grid-column:1 / -1;
+  }
+
+  #tab-entry .row:has(#f_store) > .field{
+    min-width:0;
+    margin-bottom:2px;
+  }
+
+  #tab-entry .row:has(#f_store) > .field:has(#f_date){
+    grid-column:1 / -1;
+  }
+
+  .ui-entry-date-nav{
+    width:100%;
+  }
+
+  .ui-entry-date-nav input[type=date]{
+    flex:1 1 auto;
+  }
+
+  .ui-entry-date-nav .today-btn{
+    flex:0 0 auto;
+  }
+
+  .ui-entry-disclosure{
+    border-top:1px solid var(--line-soft,var(--line));
+    padding-top:7px;
+    margin-top:10px;
+  }
+
+  .ui-entry-optional textarea{
+    min-height:64px;
+  }
+}
