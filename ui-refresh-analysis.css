@@ -1,0 +1,255 @@
+/* Analysis/report integration for ui-refresh v1.8.0-ui.1 */
+
+/* The standalone report remains in the DOM as a safe fallback, but it is no
+ * longer exposed as a top-level destination while the refreshed analysis UI
+ * is active. */
+.tabs [data-tab="report"],
+.drawer-item[data-tab="report"]{
+  display:none!important;
+}
+
+.ui-kind-field{
+  display:none!important;
+}
+
+.ui-analysis-switch{
+  display:flex;
+  gap:4px;
+  padding:4px;
+  margin:0 0 18px;
+  width:max-content;
+  max-width:100%;
+  overflow-x:auto;
+  scrollbar-width:none;
+  border:1px solid var(--line-soft,var(--line));
+  border-radius:10px;
+  background:var(--surface-soft,var(--panel2));
+}
+.ui-analysis-switch::-webkit-scrollbar{display:none}
+.ui-analysis-switch button{
+  appearance:none;
+  border:0;
+  background:transparent;
+  color:var(--muted);
+  border-radius:7px;
+  padding:8px 16px;
+  min-width:72px;
+  font:inherit;
+  font-size:13px;
+  font-weight:650;
+  cursor:pointer;
+  white-space:nowrap;
+}
+.ui-analysis-switch button:hover{
+  color:var(--text);
+  background:color-mix(in srgb,var(--panel2) 72%,transparent);
+}
+.ui-analysis-switch button.active{
+  color:#fff;
+  background:var(--accent);
+  box-shadow:0 4px 14px color-mix(in srgb,var(--accent) 22%,transparent);
+}
+.ui-analysis-switch button:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
+}
+
+.ui-trend-pane[hidden]{display:none!important}
+.ui-trend-pane{
+  display:flex;
+  flex-direction:column;
+  gap:18px;
+}
+
+.ui-trend-hero{
+  display:grid;
+  grid-template-columns:minmax(220px,1.3fr) repeat(2,minmax(150px,.7fr));
+  gap:0;
+  border-top:1px solid var(--line-soft,var(--line));
+  border-bottom:1px solid var(--line-soft,var(--line));
+}
+.ui-trend-metric{
+  padding:16px 18px;
+  border-left:1px solid var(--line-soft,var(--line));
+}
+.ui-trend-metric:first-child{border-left:0;padding-left:4px}
+.ui-trend-metric .k{
+  color:var(--muted);
+  font-size:11px;
+  letter-spacing:.03em;
+}
+.ui-trend-metric .v{
+  margin-top:5px;
+  font-size:23px;
+  font-weight:750;
+  line-height:1.15;
+  letter-spacing:-.025em;
+  font-variant-numeric:tabular-nums;
+}
+.ui-trend-metric.primary .v{font-size:32px}
+.ui-trend-metric .sub{
+  margin-top:5px;
+  color:var(--muted);
+  font-size:11px;
+}
+
+.ui-trend-section{
+  padding:2px 0 6px;
+}
+.ui-trend-section-head{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:12px;
+}
+.ui-trend-section-head h4{
+  margin:0;
+  font-size:14px;
+  font-weight:700;
+}
+.ui-trend-section-head span{
+  color:var(--muted);
+  font-size:11px;
+}
+.ui-trend-chart{
+  width:100%;
+  overflow-x:auto;
+  border-bottom:1px solid var(--line-soft,var(--line));
+  padding-bottom:6px;
+}
+.ui-trend-chart svg{
+  display:block;
+  width:100%;
+  min-width:560px;
+  height:auto;
+}
+.ui-trend-grid{stroke:var(--line);stroke-width:1;opacity:.7}
+.ui-trend-zero{stroke:var(--muted);stroke-width:1;stroke-dasharray:4 4;opacity:.65}
+.ui-trend-income{fill:color-mix(in srgb,var(--accent2) 72%,transparent)}
+.ui-trend-expense{fill:color-mix(in srgb,var(--danger) 70%,transparent)}
+.ui-trend-net-line{fill:none;stroke:var(--accent);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+.ui-trend-net-dot{fill:var(--accent);stroke:var(--panel);stroke-width:2}
+.ui-trend-label{fill:var(--muted);font-size:10px}
+.ui-trend-value{fill:var(--muted);font-size:9px}
+.ui-trend-legend{
+  display:flex;
+  gap:14px;
+  flex-wrap:wrap;
+  align-items:center;
+  margin-top:10px;
+  color:var(--muted);
+  font-size:11px;
+}
+.ui-trend-legend span{display:inline-flex;align-items:center;gap:6px}
+.ui-trend-legend i{display:inline-block;width:12px;height:4px;border-radius:999px}
+.ui-trend-legend .inc i{background:var(--accent2)}
+.ui-trend-legend .exp i{background:var(--danger)}
+.ui-trend-legend .net i{background:var(--accent)}
+
+.ui-trend-list{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:0 26px;
+}
+.ui-trend-row{
+  display:grid;
+  grid-template-columns:minmax(90px,1fr) minmax(90px,1.3fr) auto;
+  align-items:center;
+  gap:10px;
+  min-height:42px;
+  border-bottom:1px solid var(--line-soft,var(--line));
+}
+.ui-trend-row .name{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  font-weight:600;
+}
+.ui-trend-row .track{
+  height:5px;
+  overflow:hidden;
+  border-radius:999px;
+  background:var(--surface-soft,var(--panel2));
+}
+.ui-trend-row .track span{
+  display:block;
+  height:100%;
+  border-radius:inherit;
+  background:var(--accent);
+}
+.ui-trend-row .amount{
+  font-size:12px;
+  font-variant-numeric:tabular-nums;
+}
+
+@media(max-width:760px){
+  #tab-drill > .panel > .section-title{
+    align-items:center;
+    margin-bottom:8px;
+  }
+  #tab-drill > .panel > .section-title h3{
+    display:none;
+  }
+  #tab-drill > .panel > .section-title > .row{
+    width:100%;
+    justify-content:flex-end;
+  }
+  #tab-drill > .panel > .section-title .field:has(#drillRange){
+    margin-left:auto!important;
+  }
+  #tab-drill > .panel > .section-title label{
+    display:none;
+  }
+  #drillRange{
+    width:auto!important;
+    min-width:118px;
+    padding:7px 30px 7px 9px;
+    font-size:12px;
+  }
+  #drillCustom{
+    width:100%;
+  }
+  #drillCustom .field{
+    min-width:0;
+  }
+  .ui-analysis-switch{
+    width:100%;
+    margin-bottom:14px;
+  }
+  .ui-analysis-switch button{
+    flex:1 0 auto;
+    min-width:68px;
+    padding:8px 12px;
+  }
+  .ui-trend-pane{gap:14px}
+  .ui-trend-hero{
+    grid-template-columns:1fr 1fr;
+  }
+  .ui-trend-metric{
+    padding:12px 10px;
+    border-left:0;
+    border-bottom:1px solid var(--line-soft,var(--line));
+  }
+  .ui-trend-metric.primary{
+    grid-column:1 / -1;
+    padding-left:0;
+  }
+  .ui-trend-metric:nth-child(2){border-right:1px solid var(--line-soft,var(--line))}
+  .ui-trend-metric.primary .v{font-size:30px}
+  .ui-trend-metric .v{font-size:20px}
+  .ui-trend-chart{
+    margin:0 -12px;
+    padding:0 12px 8px;
+    width:calc(100% + 24px);
+    overscroll-behavior-inline:contain;
+  }
+  .ui-trend-chart svg{min-width:520px}
+  .ui-trend-list{
+    grid-template-columns:1fr;
+  }
+  .ui-trend-row{
+    grid-template-columns:minmax(88px,1fr) minmax(72px,1fr) auto;
+  }
+}
