@@ -1,5 +1,5 @@
 /* =====================================================================
- * ui-refresh-entry.css — entry form progressive disclosure (v1.8.0-ui.2)
+ * ui-refresh-entry.css — entry form progressive disclosure (v1.8.0-ui.3)
  * ===================================================================== */
 
 .ui-entry-disclosure{
@@ -114,5 +114,63 @@
 
   .ui-entry-optional textarea{
     min-height:64px;
+  }
+}
+
+
+/* =====================================================================
+ * Desktop repair (v1.8.0-ui.3)
+ * Keep the mobile arrangement intact while giving the entry workspace
+ * the full desktop width and reserving enough room for date navigation.
+ * ===================================================================== */
+@media(min-width:761px){
+  #tab-entry > .panel{
+    max-width:none;
+    width:100%;
+    margin-left:0;
+    margin-right:0;
+  }
+
+  #tab-entry .row:has(#f_store){
+    display:grid;
+    grid-template-columns:minmax(280px,2fr) minmax(180px,1fr) minmax(320px,1.35fr);
+    gap:12px;
+    align-items:end;
+  }
+
+  #tab-entry .row:has(#f_store) > .field{
+    min-width:0;
+  }
+
+  #tab-entry .row:has(#f_store) > .field:has(#f_date){
+    min-width:320px;
+  }
+
+  .ui-entry-date-nav{
+    width:100%;
+    flex-wrap:nowrap;
+  }
+
+  .ui-entry-date-nav input[type=date]{
+    flex:1 1 170px;
+    min-width:170px;
+  }
+
+  .ui-entry-date-nav .today-btn{
+    flex:0 0 auto;
+    min-width:52px;
+    white-space:nowrap;
+  }
+}
+
+@media(min-width:761px) and (max-width:980px){
+  #tab-entry .row:has(#f_store){
+    grid-template-columns:minmax(240px,1.5fr) minmax(160px,.9fr);
+  }
+
+  #tab-entry .row:has(#f_store) > .field:has(#f_date){
+    grid-column:1 / -1;
+    min-width:0;
+    max-width:440px;
   }
 }
