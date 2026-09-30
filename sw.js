@@ -1,5 +1,5 @@
 /* sw.js ― Service Worker（PWA） */
-const CACHE = 'kakeibo-shell-v180-ui2';
+const CACHE = 'kakeibo-shell-v180-ui3';
 const ASSETS = ['./', './index.html', './styles.css', './ui-refresh.css', './ui-refresh-analysis.css', './ui-refresh-entry.css', './ui-refresh.js', './ui-refresh-entry.js', './model.js', './config.js', './cloud.js', './app.js', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png'];
 self.addEventListener('install', (e) => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()).catch(() => {})); });
 self.addEventListener('activate', (e) => { e.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
