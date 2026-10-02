@@ -1,5 +1,5 @@
 /* =====================================================================
- * ui-refresh.js — progressive UI enhancements for v1.8.0-ui.1
+ * ui-refresh.js — progressive UI enhancements for v1.8.0-ui.4
  *
  * This file intentionally sits outside app.js.  The existing accounting and
  * editing logic stays untouched; this layer only reorganises presentation and
@@ -28,6 +28,23 @@
   function signedYen(v) {
     const n = Math.round(Number(v) || 0);
     return `${n > 0 ? '+' : n < 0 ? '−' : ''}${yen(Math.abs(n))}`;
+  }
+
+  function monthEconomicSummary(state, ym) {
+    let income = 0, rewardIncome = 0, grossExpense = 0, unmanagedPoint = 0;
+    for (const t of (state.transactions || [])) {
+      if (!t.date || !t.date.startsWith(ym)) continue;
+      for (const line of (t.lines || [])) {
+        if (line.ref === 'adj:unmanaged_point' && line.amount < 0) unmanagedPoint += -line.amount;
+        if (!line.ref || !line.ref.startsWith('cat:')) continue;
+        if (line.ref.startsWith('cat:inc>')) {
+          if (line.ref === 'cat:inc>特典利用') rewardIncome += -line.amount;
+          else income += -line.amount;
+        } else if (line.ref.startsWith('cat:exp>')) grossExpense += line.amount;
+      }
+    }
+    const expense = Math.max(0, grossExpense - unmanagedPoint);
+    return { income, rewardIncome, totalIncome: income + rewardIncome, expense, grossExpense, unmanagedPoint, net: income + rewardIncome - expense };
   }
 
   function setActiveButton(next) {
@@ -91,7 +108,7 @@
       return;
     }
 
-    const months = M.trailingMonths(ym, 6).map(m => ({ ym:m, ...M.monthlySummary(state, m) }));
+    const months = M.trailingMonths(ym, 6).map(m => ({ ym:m, ...monthEconomicSummary(state, m) }));
     const current = months[months.length - 1] || { income:0, expense:0, net:0 };
     const previous = months[months.length - 2] || { income:0, expense:0, net:0 };
     const currentNet = Number(current.net != null ? current.net : current.income - current.expense) || 0;
@@ -114,7 +131,12 @@
         <div class="ui-trend-metric">
           <div class="k">支出</div>
           <div class="v neg">${yen(current.expense)}</div>
-          <div class="sub">今月</div>
+          <div class="sub">消費・費用</div>
+        </div>
+        <div class="ui-trend-metric">
+          <div class="k">特典充当</div>
+          <div class="v pos">${yen(current.rewardIncome || 0)}</div>
+          <div class="sub">利用時認識ポイント等</div>
         </div>
       </div>`;
 
