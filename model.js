@@ -9,6 +9,7 @@
     bank:          { label: '銀行口座',          kind: 'asset',     manage: 'balance' },
     emoney:        { label: '電子マネー(金額型)', kind: 'asset',     manage: 'balance' },
     point:         { label: 'ポイント',          kind: 'asset',     manage: 'balance' },
+    reward_usage:  { label: 'ポイント・特典(利用時認識)', kind: 'asset', manage: 'usage'   },
     voucher_amount:{ label: '金券(金額型)',      kind: 'asset',     manage: 'balance' },
     voucher_goods: { label: '現物券(額面評価)',  kind: 'asset',     manage: 'goods'   },
     transit:       { label: '交通系IC(簡易)',    kind: 'asset',     manage: 'simple'  },
@@ -24,18 +25,18 @@
       '交際費': { '飲み会': [], '贈答': [] }, '趣味・娯楽': { '音楽': [], '書籍': [], 'サブスク': [] },
       '被服・美容': { '衣類': [], '美容': [] }, '教養・教育': {}, '税・社会保険': {}, 'その他': { '雑費': [] },
     },
-    income: { '給与': {}, '賞与': {}, '副収入': {}, 'ポイント獲得': {}, '利息': {}, 'プレミアム益': {}, 'その他収入': {} },
+    income: { '給与': {}, '賞与': {}, '副収入': {}, 'ポイント獲得': {}, '特典利用': {}, '利息': {}, 'プレミアム益': {}, 'その他収入': {} },
   };
 
   function defaultAccounts() { return [{ id: 'a_cash', name: '現金', subtype: 'cash', opening: 0 }, { id: 'a_bank', name: '銀行(メイン)', subtype: 'bank', opening: 0 }]; }
-  function initialState() { return { version: 7, accounts: defaultAccounts(), categories: deepClone(DEFAULT_CATEGORIES), transactions: [], recurring: [], budgets: {}, budgetRollover: false, goals: [], wishlist: [], priceLogs: [], templates: [], readings: {}, meta: { createdAt: new Date().toISOString() } }; }
+  function initialState() { return { version: 8, accounts: defaultAccounts(), categories: deepClone(DEFAULT_CATEGORIES), transactions: [], recurring: [], budgets: {}, budgetRollover: false, goals: [], wishlist: [], priceLogs: [], templates: [], readings: {}, meta: { createdAt: new Date().toISOString() } }; }
   function migrate(s) {
     if (!s.recurring) s.recurring = []; for (const r of s.recurring) { if (r.intervalMonths == null) r.intervalMonths = 1; if (!('anchorYM' in r)) r.anchorYM = null; if (!r.bizAdjust) r.bizAdjust = 'none'; }
     if (!s.budgets) s.budgets = {}; if (!s.goals) s.goals = []; if (!s.wishlist) s.wishlist = []; if (!s.priceLogs) s.priceLogs = [];
     if (s.budgetRollover == null) s.budgetRollover = false; if (!s.templates) s.templates = []; if (!s.readings) s.readings = {}; for (const a of (s.accounts || [])) if (a.subtype === 'voucher_goods') { if (!a.goods) a.goods = { openingQty: 0 }; if (!a.goods.faceHistory) a.goods.faceHistory = []; }
     for (const w of s.wishlist) { if (!w.tags) w.tags = []; if (!w.status) w.status = 'active'; if (!('store' in w)) w.store = ''; if (!('url' in w)) w.url = ''; }
     for (const t of s.templates) { if (!t.padMode) t.padMode = 'calc'; }
-    if (s.version == null || s.version < 7) s.version = 7; return s;
+    if (!s.categories) s.categories = deepClone(DEFAULT_CATEGORIES); if (!s.categories.income) s.categories.income = {}; if (!s.categories.income['特典利用']) s.categories.income['特典利用'] = {}; if (s.version == null || s.version < 8) s.version = 8; return s;
   }
 
   function toHankaku(str) {
