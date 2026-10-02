@@ -237,6 +237,7 @@
     padding-left:0;
   }
   .ui-trend-metric:nth-child(2){border-right:1px solid var(--line-soft,var(--line))}
+  .ui-trend-metric:last-child{grid-column:1 / -1}
   .ui-trend-metric.primary .v{font-size:30px}
   .ui-trend-metric .v{font-size:20px}
   .ui-trend-chart{
