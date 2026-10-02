@@ -63,7 +63,7 @@
 
 .ui-trend-hero{
   display:grid;
-  grid-template-columns:minmax(220px,1.3fr) repeat(2,minmax(150px,.7fr));
+  grid-template-columns:minmax(220px,1.25fr) repeat(3,minmax(130px,.6fr));
   gap:0;
   border-top:1px solid var(--line-soft,var(--line));
   border-bottom:1px solid var(--line-soft,var(--line));
