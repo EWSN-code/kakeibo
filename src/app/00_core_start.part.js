@@ -35,10 +35,10 @@
   let ui = {};
   function resetEntryState() {
     ui.editId = null; ui.editNextId = null; ui.editPrevId = null; ui.editMove = null;
-    ui.exp = { debits: [{ path: '', amt: '', ratio: '' }], credits: [{ accId: '', amt: '' }], detail: false, total: '', ratioMode: false };
+    ui.exp = { debits:[{path:'',amt:'',ratio:''}],credits:[{accId:'',amt:''}],detail:false,total:'',ratioMode:false,earnedPointAccId:'',earnedPoints:'',cardCycleYM:'' };
     ui._store = ''; ui._branch = ''; ui._memo = ''; ui._date = ui._date || M.todayStr();
     ui._amt = ''; ui._catPath = ''; ui._accId = ''; ui._fromId = ''; ui._toId = '';
-    ui._prepaid = null; ui._goods = null;
+    ui._prepaid = null; ui._goods = null; ui._paymentTouched = false; ui._paymentAutoStore = '';
   }
   ui._date = M.todayStr(); ui.type = 'expense'; resetEntryState();
 
@@ -49,6 +49,24 @@ let listCategoryFilter = null;
   let wishFilter = { tag: null, status: 'active' };
   let priceOpen = new Set(), priceShowAll = new Set(), priceRange = {};
   const PALETTE = ['#4f9dff', '#38c793', '#ffb454', '#ff6b6b', '#a78bfa', '#22d3ee', '#f472b6', '#84cc16', '#fb923c', '#94a3b8', '#eab308', '#2dd4bf'];
+  function categoryColor(path){ const custom=state.meta&&state.meta.categoryColors&&state.meta.categoryColors[path]; if(custom)return custom; let h=2166136261; for(const ch of String(path||'')){h^=ch.charCodeAt(0);h=Math.imul(h,16777619);} return PALETTE[(h>>>0)%PALETTE.length]; }
+  function ensureCategoryColors(){ state.meta=state.meta||{}; state.meta.categoryColors=state.meta.categoryColors||{}; return state.meta.categoryColors; }
+  function hexToHsl(hex){ const n=parseInt(String(hex).replace('#',''),16),r=((n>>16)&255)/255,g=((n>>8)&255)/255,b=(n&255)/255,max=Math.max(r,g,b),min=Math.min(r,g,b);let h=0,s=0;const l=(max+min)/2,d=max-min;if(d){s=l>.5?d/(2-max-min):d/(max+min);if(max===r)h=(g-b)/d+(g<b?6:0);else if(max===g)h=(b-r)/d+2;else h=(r-g)/d+4;h*=60;}return {h:Math.round(h),s:Math.round(s*100),l:Math.round(l*100)}; }
+  function hslToHex(h,s,l){s/=100;l/=100;const c=(1-Math.abs(2*l-1))*s,x=c*(1-Math.abs((h/60)%2-1)),m=l-c/2;let r=0,g=0,b=0;if(h<60){r=c;g=x}else if(h<120){r=x;g=c}else if(h<180){g=c;b=x}else if(h<240){g=x;b=c}else if(h<300){r=x;b=c}else{r=c;b=x}return '#'+[r,g,b].map(v=>Math.round((v+m)*255).toString(16).padStart(2,'0')).join(''); }
+  const CATEGORY_COLOR_PRESETS = {
+    distinct: { label:'判別重視', colors:['#4F9DFF','#38C793','#FFB454','#FF6B6B','#A78BFA','#22D3EE','#F472B6','#84CC16','#FB923C','#94A3B8','#EAB308','#2DD4BF','#C084FC','#60A5FA','#F87171','#34D399'] },
+    tableau: { label:'Tableau系', colors:['#4E79A7','#F28E2B','#E15759','#76B7B2','#59A14F','#EDC948','#B07AA1','#FF9DA7','#9C755F','#BAB0AC','#2F6B8A','#D37225','#A63D40','#4C8C88','#3D7A38','#B59A25'] },
+    soft: { label:'落ち着いた色', colors:['#6B8FD6','#62B6A6','#D9A66A','#D97979','#9A83C7','#5FAFC4','#C77DA8','#8FAB5A','#C88A5A','#8794A5','#C3A640','#5CA99D','#AA75BD','#749DC2','#C47777','#6CAF91'] }
+  };
+  function applyCategoryColorPreset(name){
+    const preset=CATEGORY_COLOR_PRESETS[name]||CATEGORY_COLOR_PRESETS.distinct, colors=ensureCategoryColors(), pal=preset.colors;
+    const assign=(kind,kindOffset)=>{ const pfx=kind==='income'?'inc':'exp', root=state.categories[kind]||{}; Object.keys(root).forEach((top,ti)=>{ colors[pfx+'>'+top]=pal[(ti+kindOffset)%pal.length]; const mids=root[top]||{}; Object.keys(mids).forEach((mid,mi)=>{ colors[pfx+'>'+top+'>'+mid]=pal[(mi+ti*5+3+kindOffset)%pal.length]; (mids[mid]||[]).forEach((leaf,li)=>{ colors[pfx+'>'+top+'>'+mid+'>'+leaf]=pal[(li+mi*7+ti*3+6+kindOffset)%pal.length]; }); }); }); };
+    assign('expense',0); assign('income',5); state.meta.categoryColorPreset=name; persist(); renderCatTree(); renderDrill(); renderReport();
+  }
+  function openCategoryColorPresetModal(){ const tops=categoryRows('expense').filter(r=>r.level===0); const cards=Object.entries(CATEGORY_COLOR_PRESETS).map(([key,p])=>`<button class="category-preset-card" data-preset="${key}"><b>${esc(p.label)}</b><span class="category-preset-swatches">${tops.map((t,i)=>`<i style="background:${p.colors[i%p.colors.length]}" title="${esc(t.name)} ${p.colors[i%p.colors.length]}"></i>`).join('')}</span><code>${p.colors.slice(0,Math.min(tops.length,8)).join(' ')}</code></button>`).join(''); $('#modal').innerHTML=`<h3>カテゴリ色プリセット</h3><p class="hint">大カテゴリ同士が重複しない配色を一括適用します。同じ親に属する中カテゴリ同士、小カテゴリ同士も異なる色系統へ割り当てます。適用後も各カテゴリの「色」から個別調整できます。</p><div class="category-preset-list">${cards}</div><div class="actions"><button class="btn ghost" id="cp_cancel">キャンセル</button></div>`; $$('.category-preset-card',$('#modal')).forEach(b=>b.addEventListener('click',()=>{if(!confirm(`「${CATEGORY_COLOR_PRESETS[b.dataset.preset].label}」を全カテゴリへ適用しますか？`))return;applyCategoryColorPreset(b.dataset.preset);closeModal();toast('カテゴリ色プリセットを適用しました ✓');})); $('#cp_cancel').addEventListener('click',closeModal); showModal(); }
+  function openCategoryColorModal(path,label){ const colors=ensureCategoryColors(), current=categoryColor(path), hsl=hexToHsl(current); $('#modal').innerHTML=`<h3>カテゴリ色：${esc(label)}</h3><p class="hint">棒グラフ、円グラフ、凡例で共通使用します。親子カテゴリはそれぞれ個別に設定できます。</p><div class="category-color-preview" id="cc_preview"><span></span><b>${esc(label)}</b><code id="cc_hex_text">${current}</code></div><div class="field"><label>カラーピッカー</label><input type="color" id="cc_hex" value="${current}"></div><div class="field"><label>色相 <span id="cc_h_v">${hsl.h}</span>°</label><input type="range" id="cc_h" min="0" max="359" value="${hsl.h}"></div><div class="field"><label>彩度 <span id="cc_s_v">${hsl.s}</span>%</label><input type="range" id="cc_s" min="0" max="100" value="${hsl.s}"></div><div class="field"><label>明るさ <span id="cc_l_v">${hsl.l}</span>%</label><input type="range" id="cc_l" min="15" max="85" value="${hsl.l}"></div><div class="actions"><button class="btn ghost" id="cc_reset">自動色に戻す</button><button class="btn ghost" id="cc_cancel">キャンセル</button><button class="btn" id="cc_save">保存</button></div>`; const update=(source)=>{let color;if(source==='hex'){const z=hexToHsl($('#cc_hex').value);$('#cc_h').value=z.h;$('#cc_s').value=z.s;$('#cc_l').value=z.l;}color=hslToHex(+$('#cc_h').value,+$('#cc_s').value,+$('#cc_l').value);$('#cc_hex').value=color;$('#cc_h_v').textContent=$('#cc_h').value;$('#cc_s_v').textContent=$('#cc_s').value;$('#cc_l_v').textContent=$('#cc_l').value;$('#cc_hex_text').textContent=color;$('#cc_preview span').style.background=color;}; $('#cc_hex').addEventListener('input',()=>update('hex')); ['#cc_h','#cc_s','#cc_l'].forEach(id=>$(id).addEventListener('input',()=>update())); $('#cc_cancel').addEventListener('click',closeModal); $('#cc_reset').addEventListener('click',()=>{delete colors[path];persist();closeModal();renderCatTree();renderDrill();renderReport();toast('自動色に戻しました');}); $('#cc_save').addEventListener('click',()=>{colors[path]=$('#cc_hex').value.toLowerCase();persist();closeModal();renderCatTree();renderDrill();renderReport();toast('カテゴリ色を保存しました ✓');}); update(); showModal(); }
+
+  function categoryPath(kind,parts){ return (kind==='income'?'inc>':'exp>')+(parts||[]).join('>'); }
 
   function persist() { Store.save(state); }
   const $ = (s, r = document) => r.querySelector(s);
@@ -182,8 +200,18 @@ let listCategoryFilter = null;
 
   function accountsBy(fn) { return state.accounts.filter(fn); }
   function accById(id) { return state.accounts.find(a => a.id === id); }
-  function accName(id) { const a = accById(id); return a ? a.name : id; }
-  function refLabel(ref) { if (ref.startsWith('acc:')) return accName(ref.slice(4)); if (ref.startsWith('cat:')) return ref.slice(4).replace(/^exp>|^inc>/, '').split('>').join(' › '); return ref; }
+  const UNMANAGED_POINT_ID = '__unmanaged_point__';
+  const UNMANAGED_POINT_REF='adj:unmanaged_point';
+  const POINT_EARNED_REF='adj:point_earned';
+  const POINT_BALANCE_REF='adj:point_balance';
+  function isUnmanagedPoint(id) { return id === UNMANAGED_POINT_ID; }
+  function isUsageRewardAccount(id) { const a = accById(id); const sub = a && M.ACCOUNT_SUBTYPES[a.subtype]; return !!(sub && sub.manage === 'usage'); }
+  function accName(id) { if (isUnmanagedPoint(id)) return '管理外ポイント控除'; const a = accById(id); return a ? a.name : id; }
+  function refLabel(ref) { if(ref===POINT_EARNED_REF)return 'ポイント獲得（分析対象外）'; if(ref===POINT_BALANCE_REF)return 'ポイント残高調整（分析対象外）'; if (ref === UNMANAGED_POINT_REF) return '管理外ポイント控除'; if (ref.startsWith('acc:')) return accName(ref.slice(4)); if (ref.startsWith('cat:')) return ref.slice(4).replace(/^exp>|^inc>/, '').split('>').join(' › '); return ref; }
+  function paymentOptions(selected, filter) { const normal=accountOptions(filter,selected); return normal + `<option value="${UNMANAGED_POINT_ID}" ${selected===UNMANAGED_POINT_ID?'selected':''}>管理外ポイント控除（旧方式・残高管理なし）</option>`; }
+  function paymentCredit(c) { return isUnmanagedPoint(c.accId) ? { ref:UNMANAGED_POINT_REF, amount:creditPayAmount(c) } : { accId:c.accId, amount:creditPayAmount(c), qty:c.qty }; }
+  function preferredPaymentForStore(store) { if (!store) return ''; const totals = {}; state.transactions.forEach(t => { if (t.kind !== 'expense' || t.store !== store) return; t.lines.forEach(l => { if (l.amount >= 0) return; const id=l.ref===UNMANAGED_POINT_REF?UNMANAGED_POINT_ID:(l.ref.startsWith('acc:')?l.ref.slice(4):''); if(!id)return; totals[id]=(totals[id]||0)+(-l.amount); }); }); return Object.entries(totals).filter(([id])=>isUnmanagedPoint(id)||!!accById(id)).sort((x,y)=>y[1]-x[1])[0]?.[0]||''; }
+  function applyPreferredPaymentForStore(store) { if (ui.editId || ui.type !== 'expense' || ui._paymentTouched || !store || ui._paymentAutoStore===store) return; const id=preferredPaymentForStore(store); if(!id)return; ui._paymentAutoStore=store; const prev=ui.exp.credits[0]||{}; ui.exp.credits=[Object.assign({},prev,{accId:id})]; renderCreditsExp(); recalcExpense(); }
   function accountOptions(filter, selected) { return accountsBy(a => !filter || filter(a)).map(a => `<option value="${a.id}" ${a.id === selected ? 'selected' : ''}>${esc(a.name)}（${M.ACCOUNT_SUBTYPES[a.subtype].label}）</option>`).join(''); }
   function categoryOptions(kind, selected) { return M.flattenCategories(state.categories, kind).map(c => `<option value="${c.path}" ${c.path === selected ? 'selected' : ''}>${c.label}</option>`).join(''); }
 function ensureUncategorizedCategory() { const root = state.categories.expense || (state.categories.expense = {}); root['その他'] = root['その他'] || {}; root['その他']['未分類'] = root['その他']['未分類'] || []; return 'exp>その他>未分類'; }

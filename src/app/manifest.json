@@ -1,7 +1,7 @@
 {
-  "version": "v1.6.2o",
+  "version": "v1.8.0-ui.4",
   "bundle": "app.js",
-  "description": "Source split for maintainability. Runtime still loads bundled app.js. .part.js files are not standalone; concatenate with tools/build_app.py.",
+  "description": "Source split for maintainability. Runtime loads the bundled app.js. Verify without overwriting it with python tools/build_app.py --check.",
   "parts": [
     {
       "file": "00_core_start.part.js",
@@ -48,5 +48,5 @@
       "description": "Navigation boot"
     }
   ],
-  "bundle_sha256": "15c9ec464a8f3f83d0166c6d810c4e6f1494871768031f307a65ec91b615fd25"
+  "bundle_sha256": "46c3ae59225d149c32ea7dcf56a0a904141888df7eb76aa2ea2875bc057f7c0d"
 }
