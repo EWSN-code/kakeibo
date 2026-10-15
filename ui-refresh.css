@@ -629,3 +629,31 @@ button:focus-visible,.drill-row:focus-visible{
   .account-bar .btn{padding:5px 6px;font-size:11px}
   #txTable tbody td:nth-child(8) .btn{padding:4px 6px}
 }
+
+/* Card reconciliation and partial settlement (v1.8.0-ui.5) */
+.card-reconcile-modal{max-width:760px}
+.card-reconcile-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:14px 0}
+.card-reconcile-summary>div{padding:10px;border-top:1px solid var(--line-soft,var(--line));color:var(--muted);font-size:12px}
+.card-reconcile-summary strong{display:block;margin-top:6px;font-size:19px;color:var(--text);font-variant-numeric:tabular-nums}
+.card-reconcile-list{max-height:42vh;overflow:auto;border-block:1px solid var(--line-soft,var(--line));padding:8px 0}
+.card-reconcile-caption{font-size:12px;color:var(--muted);margin:6px 0 10px;font-weight:700}
+.card-reconcile-item{padding:11px 3px;border-bottom:1px solid var(--line-soft,var(--line));display:flex;flex-direction:column;gap:6px}
+.card-reconcile-main{display:grid;grid-template-columns:24px minmax(0,1fr) auto;align-items:center;gap:9px;color:var(--text);margin:0}
+.card-reconcile-main input{width:18px;height:18px}
+.card-reconcile-main strong{display:block;font-size:13px;font-weight:650;overflow-wrap:anywhere}
+.card-reconcile-main small{display:block;color:var(--muted);margin-top:4px;font-size:11px}
+.card-reconcile-main b{white-space:nowrap;font-size:14px;font-variant-numeric:tabular-nums}
+.card-reconcile-select{display:flex;gap:8px;align-items:center;margin-left:33px;font-size:12px;color:var(--muted)}
+.card-reconcile-select select{width:auto;min-width:170px;max-width:100%;padding:6px 8px;font-size:12px}
+.card-reconcile-near{margin:9px 0}
+.card-reconcile-near>summary{padding:8px;cursor:pointer;color:var(--accent);font-size:12px}
+.card-reconcile-modal .balance-warn{min-height:22px}
+#pay_partial_amount{max-width:240px}
+@media(max-width:760px){
+ .card-reconcile-summary{gap:2px}
+ .card-reconcile-summary>div{padding:10px 5px;font-size:10px}
+ .card-reconcile-summary strong{font-size:16px}
+ .card-reconcile-list{max-height:44vh}
+ .card-reconcile-select{flex-wrap:wrap}
+ .card-reconcile-modal .actions .btn{flex:1 1 auto}
+}

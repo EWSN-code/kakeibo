@@ -53,27 +53,183 @@
     showModal();
   }
 
-  /* ============ カード請求 ============ */
-  function renderCards() {
-    const host = $('#cardCycles'); if (!host) return; const cards = accountsBy(a => a.subtype === 'card'); if (!cards.length) { host.innerHTML = `<p class="muted">カード口座がありません。「残高・口座」から追加してください。</p>`; return; }
-    let html = '';
-    for (const card of cards) { const cycles = M.cardCycles(state, card.id); const dueTotal = cycles.filter(c => c.due && !c.settled).reduce((s, c) => s + c.outstanding, 0); html += `<div style="margin-bottom:14px"><div class="section-title" style="margin-bottom:8px"><h3 style="margin:0">${esc(card.name)} <span class="acc-sub">未払 合計 ${yen(M.accountBalance(state, card.id))}</span></h3>${dueTotal > 0 ? `<button class="btn sm" data-payall="${card.id}">期限到来分をまとめて消込 (${yen(dueTotal)})</button>` : ''}</div>`; if (!cycles.length) html += `<p class="muted">請求はありません。</p>`; cycles.slice().reverse().forEach(c => { const badge = c.settled ? `<span class="badge ok">消込済</span>` : (c.due ? `<span class="badge due">要支払</span>` : `<span class="badge plan">予定</span>`); html += `<div class="cycle-row ${c.settled ? 'settled' : (c.due ? 'due' : '')}"><div><div class="acc-name">${c.key} 締め${badge}</div><div class="acc-sub">引落 ${c.payDate} ・ 請求 ${yen(c.charge)}${c.paid ? ' ・ 支払済 ' + yen(c.paid) : ''}</div></div><div style="text-align:right"><div class="num" style="font-weight:700">${yen(c.outstanding)}</div>${!c.settled ? `<button class="btn ghost sm" data-pay="${card.id}|${c.key}|${c.payDate}|${c.outstanding}">消込</button>` : ''}</div></div>`; }); html += `</div>`; }
-    host.innerHTML = html;
-    $$('[data-pay]', host).forEach(b => b.addEventListener('click', () => { const [cardId, key, payDate, out] = b.dataset.pay.split('|'); payModalContent('カード引落の消込', cardId, key, payDate, +out, payDate, [{ accId: (accountsBy(a => a.subtype === 'bank')[0] || {}).id || '', amount: Math.round(+out) }], null); showModal(); }));
-    $$('[data-payall]', host).forEach(b => b.addEventListener('click', () => payAllDue(b.dataset.payall)));
+  /* ============ カード請求：請求月調整と部分消込 ============ */
+  function shiftCardCycle(ym,delta){return M.idxToYM(M.ymIndex(ym)+delta);}
+
+  function cardCyclePurchaseRows(cardId,cycleKey){
+   const card=accById(cardId);if(!card||card.subtype!=='card')return [];
+   const center=M.ymIndex(cycleKey);
+   return state.transactions.filter(t=>t.kind!=='card_payment').map(t=>{
+    const amount=-(t.lines||[]).filter(l=>l.ref==='acc:'+cardId).reduce((n,l)=>n+(l.amount||0),0);
+    if(Math.abs(amount)<0.5)return null;
+    const automatic=M.cardCloseInfo(card,t.date).cycleKey;
+    const override=t.meta&&t.meta.cardCycleOverrides&&t.meta.cardCycleOverrides[cardId]||'';
+    const effective=override||automatic;
+    if(Math.abs(M.ymIndex(automatic)-center)>2&&Math.abs(M.ymIndex(effective)-center)>2)return null;
+    return {id:t.id,date:t.date,store:t.store||'',branch:t.branch||'',memo:t.memo||'',amount,automatic,override,effective};
+   }).filter(Boolean).sort((a,b)=>{
+    const ai=a.effective===cycleKey?0:1,bi=b.effective===cycleKey?0:1;
+    return ai-bi||b.date.localeCompare(a.date)||a.id.localeCompare(b.id);
+   });
   }
-  function payModalContent(title, cardId, cycleKey, payDate, outstanding, date, credits, editId) {
-    ui._payCredits = credits.map(c => ({ ...c }));
-    const draw = () => { const opts = sel => paymentOptions(sel, a => ['bank','cash','point','emoney'].includes(a.subtype)); const rows = ui._payCredits.map((c, i) => `<div class="credit-line" data-i="${i}"><div class="field" style="flex:2"><select class="pc_acc">${opts(c.accId)}</select></div><div class="field amt"><input type="number" class="pc_amt" value="${c.amount}"></div><button class="btn ghost sm pc_del">✕</button></div>`).join(''); const sum = ui._payCredits.reduce((s, c) => s + (+c.amount || 0), 0); const diff = outstanding - sum; const matched = Math.abs(diff) < 0.5;
-      $('#modal').innerHTML = `<h3>${title}</h3><p class="hint">${esc(accName(cardId))} / ${cycleKey}締め ・ 請求残 <b>${yen(outstanding)}</b>。銀行＋ポイント等の複数充当が可能です。</p><div class="field"><label>引落日</label><input type="date" id="pay_date" value="${date}"></div><label>支払元（複数可）</label>${rows}<button class="btn ghost sm" id="pay_add">＋支払元を追加</button><div class="totline"><span>支払合計 <span class="muted" id="pay_diff"></span></span><span class="v" id="pay_sum">${yen(sum)}</span></div><div class="balance-warn" id="pay_warn"></div><div class="actions"><button class="btn ghost" id="pay_cancel">キャンセル</button>${matched ? '' : `<button class="btn ghost sm" id="pay_fill">残額を自動補充</button>`}<button class="btn" id="pay_ok" ${matched ? '' : 'disabled'}>${editId ? '更新' : '消込する'}</button></div>`;
-      $('#pay_sum').style.color = matched ? 'var(--accent2)' : 'var(--warn)'; $('#pay_diff').innerHTML = matched ? '（一致）' : `（差 ${yen(diff)}）`; $('#pay_warn').textContent = matched ? '' : `⚠ 支払合計が請求残 ${yen(outstanding)} と一致していません。一致させると消込できます（分割払いは未対応）。`;
-      $$('#modal .credit-line').forEach(line => { const i = +line.dataset.i; line.querySelector('.pc_acc').addEventListener('change', e => ui._payCredits[i].accId = e.target.value); line.querySelector('.pc_amt').addEventListener('input', e => { ui._payCredits[i].amount = +e.target.value; draw(); }); line.querySelector('.pc_del').addEventListener('click', () => { ui._payCredits.splice(i, 1); if (!ui._payCredits.length) ui._payCredits.push({ accId: '', amount: 0 }); draw(); }); });
-      $('#pay_add').addEventListener('click', () => { const rest = outstanding - ui._payCredits.reduce((s, c) => s + (+c.amount || 0), 0); ui._payCredits.push({ accId:UNMANAGED_POINT_ID, amount:Math.max(0,Math.round(rest)) }); draw(); });
-      const pf = $('#pay_fill'); if (pf) pf.addEventListener('click', () => { const rest = outstanding - ui._payCredits.reduce((s, c) => s + (+c.amount || 0), 0); if (ui._payCredits.length) ui._payCredits[ui._payCredits.length - 1].amount = (+ui._payCredits[ui._payCredits.length - 1].amount || 0) + Math.round(rest); else ui._payCredits.push({ accId: (accountsBy(a => a.subtype === 'bank')[0] || {}).id || '', amount: Math.round(rest) }); draw(); });
-      $('#pay_cancel').addEventListener('click', closeModal);
-      $('#pay_ok').addEventListener('click', () => { const creds = ui._payCredits.map(c => isUnmanagedPoint(c.accId)?({ref:UNMANAGED_POINT_REF,amount:+c.amount}):({accId:c.accId,amount:+c.amount})).filter(c => (c.accId||c.ref) && c.amount); if (!creds.length) return toast('支払元を入力してください'); const cs = creds.reduce((s, c) => s + c.amount, 0); if (Math.abs(cs - outstanding) > 0.5) return toast('支払合計が請求残と一致していません'); const t = M.buildCardPayment({ id: editId, date: $('#pay_date').value, cardAccId: cardId, credits: creds, cycleKey, payDate: $('#pay_date').value }); if (editId) { const idx = state.transactions.findIndex(x => x.id === editId); if (idx >= 0) state.transactions[idx] = t; toast('更新しました ✓'); } else { state.transactions.push(t); toast('消込しました ✓'); } persist(); closeModal(); renderCards(); renderAccounts(); renderList(); renderDrill(); });
+
+  function previewCardCycleChanges(cardId,changes){
+   const card=accById(cardId);if(!card||card.subtype!=='card')throw new Error('カード口座が見つかりません');
+   const requested=changes||{},ids=new Set(Object.keys(requested)),seen=new Set();
+   const transactions=state.transactions.map(t=>{
+    if(!ids.has(t.id))return t;
+    seen.add(t.id);
+    if(t.kind==='card_payment'||!(t.lines||[]).some(l=>l.ref==='acc:'+cardId))throw new Error('このカードに属さない取引は変更できません');
+    const value=requested[t.id];
+    if(value!=null&&value!==''&&!/^\d{4}-(0[1-9]|1[0-2])$/.test(value))throw new Error('請求締め月の形式が不正です');
+    const meta={...(t.meta||{})},overrides={...(meta.cardCycleOverrides||{})};
+    if(value)overrides[cardId]=value;else delete overrides[cardId];
+    if(Object.keys(overrides).length)meta.cardCycleOverrides=overrides;else delete meta.cardCycleOverrides;
+    return {...t,meta:Object.keys(meta).length?meta:null};
+   });
+   if(seen.size!==ids.size)throw new Error('対象取引が見つかりません');
+   const previewState={...state,transactions};return {previewState,cycles:M.cardCycles(previewState,cardId)};
+  }
+
+  function findCardCycleOverpayment(cardId,projectedCycles){
+   const before=new Map(M.cardCycles(state,cardId).map(c=>[c.key,c.outstanding]));
+   return projectedCycles.find(c=>c.outstanding<-.5&&c.outstanding<(before.has(c.key)?before.get(c.key):0)-.5)||null;
+  }
+
+  function renderCards(){
+   const host=$('#cardCycles');if(!host)return;
+   const cards=accountsBy(a=>a.subtype==='card');
+   if(!cards.length){host.innerHTML='<p class="muted">カード口座がありません。「残高・口座」から追加してください。</p>';return;}
+   let html='';
+   for(const card of cards){
+    const cycles=M.cardCycles(state,card.id);
+    const dueTotal=cycles.filter(c=>c.due&&c.outstanding>.5).reduce((s,c)=>s+c.outstanding,0);
+    html+=`<div style="margin-bottom:14px"><div class="section-title" style="margin-bottom:8px"><h3 style="margin:0">${esc(card.name)} <span class="acc-sub">未払 合計 ${yen(M.accountBalance(state,card.id))}</span></h3>${dueTotal>0?`<button class="btn sm" data-payall="${esc(card.id)}">期限到来分をまとめて消込 (${yen(dueTotal)})</button>`:''}</div>`;
+    if(!cycles.length)html+='<p class="muted">請求はありません。</p>';
+    cycles.slice().reverse().forEach(c=>{
+     const badge=c.settled?'<span class="badge ok">消込済</span>':c.due?'<span class="badge due">要支払</span>':'<span class="badge plan">予定</span>';
+     const label=c.outstanding>.5?'消込・請求調整':'請求月を調整';
+     html+=`<div class="cycle-row ${c.settled?'settled':c.due?'due':''}"><div><div class="acc-name">${esc(c.key)} 締め${badge}</div><div class="acc-sub">引落予定 ${esc(c.payDate)} ・ 請求 ${yen(c.charge)}${c.paid?' ・ 消込済 '+yen(c.paid):''}</div></div><div style="text-align:right"><div class="num" style="font-weight:700">${yen(c.outstanding)}</div><button type="button" class="btn ghost sm" data-reconcile="${esc(card.id)}|${esc(c.key)}">${label}</button></div></div>`;
+    });
+    html+='</div>';
+   }
+   host.innerHTML=html;
+   $('[data-reconcile]',host).forEach(b=>b.addEventListener('click',()=>{const [cardId,ym]=b.dataset.reconcile.split('|');openCardReconcileModal(cardId,ym);}));
+   $('[data-payall]',host).forEach(b=>b.addEventListener('click',()=>payAllDue(b.dataset.payall)));
+  }
+
+  function openCardReconcileModal(cardId,cycleKey,previousDraft){
+   const card=accById(cardId);if(!card)return toast('カード口座が見つかりません');
+   const rows=cardCyclePurchaseRows(cardId,cycleKey),pending={...(previousDraft||{})};
+   const effective=r=>Object.prototype.hasOwnProperty.call(pending,r.id)?(pending[r.id]||r.automatic):r.effective;
+   const chosenOverride=r=>Object.prototype.hasOwnProperty.call(pending,r.id)?(pending[r.id]||''):(r.override||'');
+   const assignments=()=>Object.fromEntries(rows.filter(r=>chosenOverride(r)!==(r.override||'')).map(r=>[r.id,chosenOverride(r)||null]));
+   const rowHtml=r=>{
+    const active=effective(r),value=chosenOverride(r);
+    const keys=[...new Set([-2,-1,0,1,2,3].map(n=>shiftCardCycle(cycleKey,n)).concat([r.automatic,r.effective,value].filter(Boolean)))].sort();
+    const options=[`<option value="" ${!value?'selected':''}>自動判定 (${esc(r.automatic)})</option>`].concat(keys.map(k=>`<option value="${k}" ${value===k?'selected':''}>${k}${k===cycleKey?'（今回）':''}</option>`)).join('');
+    return `<div class="card-reconcile-item" data-card-tx="${esc(r.id)}"><label class="card-reconcile-main"><input type="checkbox" class="cr-include" ${active===cycleKey?'checked':''} aria-label="今回の請求に含める"><span><strong>${esc(r.date)} · ${esc(r.store||'店名なし')}${r.branch?' / '+esc(r.branch):''}</strong><small>自動 ${esc(r.automatic)}締め${r.override?' ・ 変更済 '+esc(r.override)+'締め':''}</small></span><b>${yen(r.amount)}</b></label><label class="card-reconcile-select">請求締め月 <select class="cr-month">${options}</select></label></div>`;
+   };
+   const current=rows.filter(r=>r.effective===cycleKey),nearby=rows.filter(r=>r.effective!==cycleKey);
+   const host=$('#modal');host.classList.add('card-reconcile-modal');
+   host.innerHTML=`<h3>${esc(card.name)} · ${esc(cycleKey)}締め</h3><p class="hint">今回の請求に載った取引を選択してください。チェックを外すと翌月締めに移動します。請求月欄から他の月や自動判定にも変更できます。購入日・支出額は変更しません。</p><div class="card-reconcile-summary"><div>調整後の請求額 <strong id="cr-charge"></strong></div><div>既に消込済 <strong id="cr-paid"></strong></div><div>今回の請求残 <strong id="cr-outstanding"></strong></div></div><div class="card-reconcile-list"><div class="card-reconcile-caption">この締め月に割り当てられている取引 (${current.length}件)</div>${current.map(rowHtml).join('')||'<p class="hint">今回の取引はありません。</p>'}<details class="card-reconcile-near"><summary>前後2か月の候補から追加 (${nearby.length}件)</summary>${nearby.map(rowHtml).join('')||'<p class="hint">候補はありません。</p>'}</details></div><div class="balance-warn" id="cr-warning"></div><div class="actions"><button type="button" class="btn ghost" id="cr-cancel">キャンセル</button><button type="button" class="btn ghost" id="cr-save">請求月だけ保存</button><button type="button" class="btn" id="cr-next">この内容で消込へ</button></div>`;
+   const refresh=()=>{
+    try{
+     const changes=assignments(),projected=previewCardCycleChanges(cardId,changes);
+     const bad=findCardCycleOverpayment(cardId,projected.cycles),cycle=projected.cycles.find(c=>c.key===cycleKey);
+     const total=cycle?cycle.charge:0,paid=cycle?cycle.paid:0,remaining=cycle?cycle.outstanding:0;
+     $('#cr-charge').textContent=yen(total);$('#cr-paid').textContent=yen(paid);$('#cr-outstanding').textContent=yen(remaining);
+     $('#cr-warning').textContent=bad?`${bad.key}締めの消込済額が請求額を超えてしまいます。移動内容を調整してください。`:remaining<=.5?'この締め月に新たに消し込む残額はありません。請求月の調整だけは保存できます。':'';
+     $('#cr-save').disabled=!!bad||Object.keys(changes).length===0;
+     $('#cr-next').disabled=!!bad||remaining<=.5;
+     return {changes,projected,cycle,remaining,bad};
+    }catch(e){$('#cr-warning').textContent=e.message;$('#cr-save').disabled=true;$('#cr-next').disabled=true;return null;}
+   };
+   $('.card-reconcile-item',host).forEach(item=>{
+    const row=rows.find(r=>r.id===item.dataset.cardTx),check=item.querySelector('.cr-include'),select=item.querySelector('.cr-month');
+    select.addEventListener('change',()=>{pending[row.id]=select.value||null;check.checked=effective(row)===cycleKey;refresh();});
+    check.addEventListener('change',()=>{pending[row.id]=check.checked?cycleKey:shiftCardCycle(cycleKey,1);select.value=pending[row.id];refresh();});
+   });
+   $('#cr-cancel').addEventListener('click',closeModal);
+   $('#cr-save').addEventListener('click',()=>{
+    const result=refresh();if(!result||result.bad)return;
+    if(!Object.keys(result.changes).length)return toast('変更はありません');
+    state.transactions=result.projected.previewState.transactions;persist();closeModal();renderCards();renderList();renderAccounts();toast('請求月を更新しました');
+   });
+   $('#cr-next').addEventListener('click',()=>{
+    const result=refresh();if(!result||result.bad||result.remaining<=.5)return;
+    const account=accountsBy(a=>a.subtype==='bank')[0]||accountsBy(a=>a.subtype==='cash')[0];
+    if(!account)return toast('銀行または現金の支払元口座が必要です');
+    const defaultDate=result.cycle?result.cycle.payDate:M.todayStr();
+    payModalContent('カード請求の消込',cardId,cycleKey,defaultDate,result.remaining,defaultDate,[{accId:account.id,amount:Math.round(result.remaining)}],null,{assignments:result.changes,back:()=>openCardReconcileModal(cardId,cycleKey,pending)});
+   });
+   refresh();showModal();
+  }
+
+  function payModalContent(title,cardId,cycleKey,payDate,outstanding,date,credits,editId,options){
+   const opts=options||{},stagedChanges=opts.assignments||{};
+   const original=(credits||[]).reduce((s,c)=>s+(+c.amount||0),0),cap=Math.round(Number(outstanding)||0);
+   ui._payCredits=(credits||[]).map(c=>({...c}));
+   let mode=editId&&original<cap-.5?'partial':'all',partialAmount=mode==='partial'?Math.round(original):cap;
+   const host=$('#modal');host.classList.remove('card-reconcile-modal');
+   const amountTarget=()=>mode==='partial'?partialAmount:cap;
+   const draw=()=>{
+    const paymentOptionsHtml=selected=>'<option value="">支払元を選択</option>'+paymentOptions(selected,a=>['bank','cash','point','emoney'].includes(a.subtype));
+    const creditRows=ui._payCredits.map((c,i)=>`<div class="credit-line card-payment-row" data-i="${i}"><div class="field" style="flex:2"><select class="pc_acc">${paymentOptionsHtml(c.accId)}</select></div><div class="field amt"><input type="number" class="pc_amt" min="0" step="1" value="${Number(c.amount)||0}" aria-label="支払元の金額"></div><button type="button" class="btn ghost sm pc_del" aria-label="支払元を削除">✕</button></div>`).join('');
+    host.innerHTML=`<h3>${esc(title)}</h3><p class="hint">${esc(accName(cardId))} / ${esc(cycleKey)}締め · 請求残 ${yen(cap)}。一部のみ消込した場合は残額を次回も消し込めます。</p>${Object.keys(stagedChanges).length?'<p class="hint">請求月の変更は、この消込を保存するときに同時に反映されます。</p>':''}<div class="field"><label>消込方法</label><select id="pay_scope"><option value="all" ${mode==='all'?'selected':''}>残額を全額消込</option><option value="partial" ${mode==='partial'?'selected':''}>一部だけ消込</option></select></div><div class="field" id="pay_partial_field" ${mode!=='partial'?'style="display:none"':''}><label>今回の消込額（円）</label><input type="number" id="pay_partial_amount" min="1" max="${cap}" step="1" value="${partialAmount}"></div><div class="field"><label>実際の引落日</label><input type="date" id="pay_date" value="${esc(date)}"></div><label>支払元（複数可）</label>${creditRows}<button type="button" class="btn ghost sm" id="pay_add">＋支払元を追加</button><div class="totline"><span>支払元の合計 <span class="muted" id="pay_diff"></span></span><span class="v" id="pay_sum"></span></div><div class="balance-warn" id="pay_warn"></div><div class="actions"><button type="button" class="btn ghost" id="pay_cancel">キャンセル</button>${typeof opts.back==='function'?'<button type="button" class="btn ghost" id="pay_back">請求選択に戻る</button>':''}<button type="button" class="btn ghost sm" id="pay_fill">差額を支払元へ反映</button><button type="button" class="btn" id="pay_ok">${editId?'更新する':'消込する'}</button></div>`;
+    const updateTotals=()=>{
+     const amount=amountTarget(),sum=ui._payCredits.reduce((s,c)=>s+(+c.amount||0),0),matched=Math.abs(sum-amount)<.5;
+     const valid=Number.isInteger(amount)&&amount>0&&amount<=cap&&matched&&ui._payCredits.every(c=>!c.amount||!!c.accId)&&ui._payCredits.every(c=>Number.isInteger(+c.amount)&&+c.amount>=0);
+     $('#pay_sum').textContent=yen(sum);$('#pay_diff').textContent=matched?'（一致）':`（差 ${yen(amount-sum)}）`;
+     $('#pay_warn').textContent=amount<=0||amount>cap||!Number.isInteger(amount)?`消込額は1円以上、${yen(cap)}以下の整数で指定してください。`:matched?'':'今回の消込額と支払元の合計を一致させてください。';
+     $('#pay_ok').disabled=!valid;return valid;
     };
-    draw();
+    $('#pay_scope').addEventListener('change',e=>{
+     mode=e.target.value;
+     if(mode==='partial'){partialAmount=Math.min(cap,Math.max(1,ui._payCredits.reduce((s,c)=>s+(+c.amount||0),0)));$('#pay_partial_amount').value=partialAmount;}
+     $('#pay_partial_field').style.display=mode==='partial'?'':'none';updateTotals();
+    });
+    $('#pay_partial_amount').addEventListener('input',e=>{
+     partialAmount=e.target.value===''?0:Number(e.target.value);
+     if(ui._payCredits.length===1){ui._payCredits[0].amount=partialAmount;const inp=host.querySelector('.pc_amt');if(inp)inp.value=partialAmount;}
+     updateTotals();
+    });
+    $('.card-payment-row',host).forEach(row=>{
+     const i=+row.dataset.i;
+     row.querySelector('.pc_acc').addEventListener('change',e=>{ui._payCredits[i].accId=e.target.value;updateTotals();});
+     row.querySelector('.pc_amt').addEventListener('input',e=>{ui._payCredits[i].amount=e.target.value===''?0:Number(e.target.value);updateTotals();});
+     row.querySelector('.pc_del').addEventListener('click',()=>{ui._payCredits.splice(i,1);if(!ui._payCredits.length)ui._payCredits.push({accId:'',amount:0});draw();});
+    });
+    $('#pay_add').addEventListener('click',()=>{const used=ui._payCredits.reduce((s,c)=>s+(+c.amount||0),0);ui._payCredits.push({accId:'',amount:Math.max(0,amountTarget()-used)});draw();});
+    $('#pay_fill').addEventListener('click',()=>{
+     const used=ui._payCredits.reduce((s,c)=>s+(+c.amount||0),0),last=ui._payCredits[ui._payCredits.length-1];if(!last)return;
+     const next=(+last.amount||0)+amountTarget()-used;if(next<0)return toast('先に他の支払元の金額を減らしてください');
+     last.amount=next;const rows=$('.card-payment-row',host);if(rows.length)rows[rows.length-1].querySelector('.pc_amt').value=next;updateTotals();
+    });
+    $('#pay_cancel').addEventListener('click',closeModal);
+    if(opts.back)$('#pay_back').addEventListener('click',opts.back);
+    $('#pay_ok').addEventListener('click',()=>{
+     if(!updateTotals())return;
+     if(!$('#pay_date').value)return toast('引落日を入力してください');
+     let preview;try{preview=previewCardCycleChanges(cardId,stagedChanges);}catch(e){return toast(e.message);}
+     if(findCardCycleOverpayment(cardId,preview.cycles))return toast('請求月の変更で消込額が超過します');
+     const cycle=preview.cycles.find(c=>c.key===cycleKey),existing=editId&&state.transactions.find(t=>t.id===editId);
+     const currentPaid=existing?existing.lines.filter(l=>l.ref==='acc:'+cardId&&l.amount>0).reduce((s,l)=>s+l.amount,0):0;
+     const availableNow=(cycle?cycle.outstanding:0)+currentPaid,amount=amountTarget();
+     if(amount>availableNow+.5||amount<=0)return toast('請求残額を再確認してください');
+     const creditsToSave=ui._payCredits.filter(c=>+c.amount>0).map(c=>isUnmanagedPoint(c.accId)?{ref:UNMANAGED_POINT_REF,amount:+c.amount}:{accId:c.accId,amount:+c.amount});
+     if(!creditsToSave.length)return toast('支払元が必要です');
+     const t=M.buildCardPayment({id:editId,date:$('#pay_date').value,cardAccId:cardId,credits:creditsToSave,cycleKey,payDate});
+     const errors=M.validateTransaction(t);if(errors.length)return toast(errors.join(' / '));
+     if(editId&&!existing)return toast('編集中の消込が見つかりません');
+     if(Object.keys(stagedChanges).length)state.transactions=preview.previewState.transactions;
+     if(editId)state.transactions[state.transactions.findIndex(x=>x.id===editId)]=t;else state.transactions.push(t);
+     persist();closeModal();renderCards();renderAccounts();renderList();renderDrill();renderReport();
+     toast(editId?'消込を更新しました':'消込を登録しました');
+    });
+    updateTotals();decorateInputs(host);
+   };
+   draw();
   }
   function payAllDue(cardId) { const bank = accountsBy(a => a.subtype === 'bank')[0] || accountsBy(a => a.subtype === 'cash')[0]; if (!bank) return toast('引落元の銀行/現金口座がありません'); const due = M.cardCycles(state, cardId).filter(c => c.due && !c.settled); if (!due.length) return toast('期限到来分はありません'); if (!confirm(`${due.length}件の請求を ${bank.name} からまとめて消込します。よろしいですか？`)) return; due.forEach(c => state.transactions.push(M.buildCardPayment({ date: c.payDate, cardAccId: cardId, credits: [{ accId: bank.id, amount: c.outstanding }], cycleKey: c.key, payDate: c.payDate }))); persist(); renderCards(); renderAccounts(); renderList(); toast(`${due.length}件を消込しました ✓`); }
 
