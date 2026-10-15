@@ -114,8 +114,8 @@
     html+='</div>';
    }
    host.innerHTML=html;
-   $('[data-reconcile]',host).forEach(b=>b.addEventListener('click',()=>{const [cardId,ym]=b.dataset.reconcile.split('|');openCardReconcileModal(cardId,ym);}));
-   $('[data-payall]',host).forEach(b=>b.addEventListener('click',()=>payAllDue(b.dataset.payall)));
+   $$('[data-reconcile]',host).forEach(b=>b.addEventListener('click',()=>{const [cardId,ym]=b.dataset.reconcile.split('|');openCardReconcileModal(cardId,ym);}));
+   $$('[data-payall]',host).forEach(b=>b.addEventListener('click',()=>payAllDue(b.dataset.payall)));
   }
 
   function openCardReconcileModal(cardId,cycleKey,previousDraft){
@@ -145,7 +145,7 @@
      return {changes,projected,cycle,remaining,bad};
     }catch(e){$('#cr-warning').textContent=e.message;$('#cr-save').disabled=true;$('#cr-next').disabled=true;return null;}
    };
-   $('.card-reconcile-item',host).forEach(item=>{
+   $$('.card-reconcile-item',host).forEach(item=>{
     const row=rows.find(r=>r.id===item.dataset.cardTx),check=item.querySelector('.cr-include'),select=item.querySelector('.cr-month');
     select.addEventListener('change',()=>{pending[row.id]=select.value||null;check.checked=effective(row)===cycleKey;refresh();});
     check.addEventListener('change',()=>{pending[row.id]=check.checked?cycleKey:shiftCardCycle(cycleKey,1);select.value=pending[row.id];refresh();});
@@ -194,7 +194,7 @@
      if(ui._payCredits.length===1){ui._payCredits[0].amount=partialAmount;const inp=host.querySelector('.pc_amt');if(inp)inp.value=partialAmount;}
      updateTotals();
     });
-    $('.card-payment-row',host).forEach(row=>{
+    $$('.card-payment-row',host).forEach(row=>{
      const i=+row.dataset.i;
      row.querySelector('.pc_acc').addEventListener('change',e=>{ui._payCredits[i].accId=e.target.value;updateTotals();});
      row.querySelector('.pc_amt').addEventListener('input',e=>{ui._payCredits[i].amount=e.target.value===''?0:Number(e.target.value);updateTotals();});
@@ -204,7 +204,7 @@
     $('#pay_fill').addEventListener('click',()=>{
      const used=ui._payCredits.reduce((s,c)=>s+(+c.amount||0),0),last=ui._payCredits[ui._payCredits.length-1];if(!last)return;
      const next=(+last.amount||0)+amountTarget()-used;if(next<0)return toast('先に他の支払元の金額を減らしてください');
-     last.amount=next;const rows=$('.card-payment-row',host);if(rows.length)rows[rows.length-1].querySelector('.pc_amt').value=next;updateTotals();
+     last.amount=next;const rows=$$('.card-payment-row',host);if(rows.length)rows[rows.length-1].querySelector('.pc_amt').value=next;updateTotals();
     });
     $('#pay_cancel').addEventListener('click',closeModal);
     if(opts.back)$('#pay_back').addEventListener('click',opts.back);
