@@ -73,7 +73,7 @@
     resize(px){
       const frame=$('#planning-frame'),height=Number(px);
       if(frame&&Number.isFinite(height))
-        frame.style.height=Math.max(700,Math.min(16000,Math.ceil(height)+12))+'px';
+        frame.style.height=Math.max(700,Math.min(980,window.innerHeight-160))+'px';
     }
   });
 
