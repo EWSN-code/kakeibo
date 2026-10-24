@@ -1146,6 +1146,85 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
   function openGoalSaveModal(id) { const g = state.goals.find(x => x.id === id); if (!g) return; const remain = Math.max(0, (g.target || 0) - (g.saved || 0)); $('#modal').innerHTML = `<h3>積立を記録：${esc(g.name)}</h3><p class="hint">仮想封筒への取り分けを記録します（帳簿の仕訳は作りません）。</p><div class="field"><label>今回積み立てる額（残り ${yen(remain)}）</label><input type="number" id="gs_amt" placeholder="例: 20000"></div><div class="field"><label><input type="checkbox" id="gs_xfer" style="width:auto" ${g.linkedAccId ? '' : 'disabled'}> 同時に振替も記帳する${g.linkedAccId ? '（→ ' + accName(g.linkedAccId) + '）' : '（紐付口座なし）'}</label></div><div id="gs_xferFields" style="display:none"><div class="field"><label>振替元口座</label><select id="gs_from">${accountOptions(a => ['bank', 'cash'].includes(a.subtype))}</select></div></div><div class="actions"><button class="btn ghost" id="gs_cancel">キャンセル</button><button class="btn" id="gs_ok">記録</button></div>`; $('#gs_xfer').addEventListener('change', e => $('#gs_xferFields').style.display = e.target.checked ? '' : 'none'); $('#gs_cancel').addEventListener('click', closeModal); $('#gs_ok').addEventListener('click', () => { const amt = +$('#gs_amt').value; if (!amt) return toast('金額を入れてください'); g.saved = (g.saved || 0) + amt; if ($('#gs_xfer').checked && g.linkedAccId) { const from = $('#gs_from').value; if (from && from !== g.linkedAccId) state.transactions.push(M.buildTransfer({ date: M.todayStr(), fromAccId: from, toAccId: g.linkedAccId, amount: amt, store: '積立', memo: '積立: ' + g.name })); } persist(); closeModal(); renderGoals(); renderAccounts(); renderList(); toast('積立を記録しました ✓'); }); showModal(); }
   function openGoalModal(id) { const editing = id ? state.goals.find(g => g.id === id) : null; const g = editing || { id: 'g_' + Math.random().toString(36).slice(2, 8), name: '', target: 0, targetYM: '', saved: 0, priority: 3, note: '', linkedAccId: null }; $('#modal').innerHTML = `<h3>${editing ? '目標を編集' : '目標を追加'}</h3><div class="field"><label>目標名</label><input id="go_name" value="${esc(g.name)}" placeholder="例: Mac買い替え / 旅行 / 予備資金"></div><div class="row"><div class="field"><label>目標額</label><input type="number" id="go_target" value="${g.target || ''}"></div><div class="field"><label>現在の積立済</label><input type="number" id="go_saved" value="${g.saved || 0}"></div></div><div class="row"><div class="field"><label>目標月（任意）</label><input type="month" id="go_ym" value="${g.targetYM || ''}"></div><div class="field"><label>優先度(1=最優先)</label><input type="number" id="go_pri" min="1" max="9" value="${g.priority || 3}"></div></div><div class="field"><label>紐付ける積立口座（任意）</label><select id="go_acc"><option value="">なし（仮想のみ）</option>${accountOptions(a => M.ACCOUNT_SUBTYPES[a.subtype].kind === 'asset' && M.ACCOUNT_SUBTYPES[a.subtype].manage !== 'usage', g.linkedAccId)}</select></div><div class="field"><label>メモ</label><input id="go_note" value="${esc(g.note || '')}"></div><div class="actions"><button class="btn ghost" id="go_cancel">キャンセル</button><button class="btn" id="go_ok">保存</button></div>`; $('#go_cancel').addEventListener('click', closeModal); $('#go_ok').addEventListener('click', () => { const name = $('#go_name').value.trim(); if (!name) return toast('目標名を入れてください'); const target = +$('#go_target').value; if (!target) return toast('目標額を入れてください'); const obj = editing || g; obj.name = name; obj.target = target; obj.saved = +$('#go_saved').value || 0; obj.targetYM = $('#go_ym').value || null; obj.priority = +$('#go_pri').value || 3; obj.linkedAccId = $('#go_acc').value || null; obj.note = $('#go_note').value; if (!editing) state.goals.push(obj); persist(); closeModal(); renderGoals(); toast('保存しました ✓'); }); showModal(); }
 
+  /* ============ 資金計画 v1.9.0：実績読み取り専用 / 計画だけ保存 ============ */
+  function planningActualMonths(fromYM,toYM) {
+    const from=M.ymIndex(fromYM),to=M.ymIndex(toYM);
+    if(!Number.isInteger(from)||!Number.isInteger(to)||to<from||to-from>59)
+      throw new Error('計画期間は1〜60か月で指定してください');
+    const out=Object.create(null);
+    for(let n=from;n<=to;n++){
+      const ym=M.idxToYM(n);
+      out[ym]={ym,income:0,grossExpense:0,unmanagedPoint:0,expense:0,net:null,recordedTransactions:0};
+    }
+    for(const t of state.transactions){
+      const ym=String(t.date||'').slice(0,7),v=out[ym];
+      if(!v)continue;
+      let relevant=false;
+      for(const ln of t.lines||[]){
+        const ref=String(ln.ref||''),amount=Number(ln.amount)||0;
+        if(ref.startsWith('cat:inc>')){v.income-=amount;relevant=true;}
+        else if(ref.startsWith('cat:exp>')){v.grossExpense+=amount;relevant=true;}
+        else if(ref==='adj:unmanaged_point'&&amount<0){v.unmanagedPoint-=amount;relevant=true;}
+      }
+      if(relevant)v.recordedTransactions++;
+    }
+    for(const v of Object.values(out)){
+      v.expense=v.grossExpense-v.unmanagedPoint;
+      if(v.recordedTransactions>0)v.net=Math.round(v.income-v.expense);
+    }
+    return out;
+  }
+  function renderPlanning(){
+    const frame=$('#planning-frame');
+    if(!frame)return;
+    if(!frame.dataset.loaded){
+      frame.dataset.loaded='1';
+      frame.setAttribute('src','./planning.html');
+    }else{
+      try{frame.contentWindow?.PlanningUI?.refreshActuals?.();}catch(e){console.error('資金計画の実績更新に失敗',e);}
+    }
+  }
+  window.KakeiboPlanningBridge=Object.freeze({
+    load(){
+      return {plan:state.planning?JSON.parse(JSON.stringify(state.planning)):null};
+    },
+    actuals(fromYM,toYM){
+      return planningActualMonths(fromYM,toYM);
+    },
+    save(draft,expectedRevision){
+      if(!draft||draft.format!=='kakeibo-planning'||draft.schemaVersion!==1||
+        draft.demo!==false||!Array.isArray(draft.months)||!Array.isArray(draft.scenarios)||
+        !draft.scenarios.length||draft.scenarios.length>12)
+        throw new Error('資金計画のデータ形式が正しくありません');
+      const revision=Number(state.planning?.revision||0);
+      if(!Number.isSafeInteger(expectedRevision)||expectedRevision!==revision)
+        throw new Error('別の画面で資金計画が変更されました。再読込する前にJSONへ退避してください');
+      // The existing cloud adapter upserts the whole kakeibo state. This lease only
+      // catches concurrent saves visible in this browser's localStorage.
+      try{
+        const local=localStorage.getItem('kakeibo_v0_state');
+        if(local){
+          const disk=JSON.parse(local),diskRev=Number(disk?.planning?.revision||0);
+          if(diskRev>revision)throw new Error('別タブの新しい計画が見つかりました。上書きを停止します');
+        }
+      }catch(e){throw new Error('保存前の整合性を確認できません：'+e.message);}
+      const next=JSON.parse(JSON.stringify(draft));
+      if(JSON.stringify(next).length>2000000)throw new Error('計画データが大きすぎます（上限2MB）');
+      for(const month of next.months){
+        if(month.source==='家計簿連動')month.actualNet=null;
+      }
+      next.revision=revision+1;
+      state.planning=next;
+      persist();
+      return {revision:next.revision};
+    },
+    resize(px){
+      const frame=$('#planning-frame'),height=Number(px);
+      if(frame&&Number.isFinite(height))
+        frame.style.height=Math.max(700,Math.min(16000,Math.ceil(height)+12))+'px';
+    }
+  });
+
   /* ============ ほしいもの ============ */
   function allWishTags() { const s = new Set(); state.wishlist.forEach(w => (w.tags || []).forEach(t => s.add(t))); return [...s].sort((a, b) => a.localeCompare(b, 'ja')); }
   function renderWishlist() {
@@ -1201,13 +1280,13 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
   function openPriceModal(id) { const editing = id ? state.priceLogs.find(p => p.id === id) : null; const e = editing || { id: 'pl_' + Math.random().toString(36).slice(2, 8), item: '', date: M.todayStr(), store: '', branch: '', price: 0, qty: 0, unit: '総額', note: '' }; $('#modal').innerHTML = `<h3>${editing ? '価格を編集' : '価格を記録'}</h3><div class="field"><label>品目</label><input id="pl_item" list="dl-item" value="${esc(e.item)}" placeholder="例: 卵(10個) / 牛乳 / 鶏むね肉"></div><div class="row"><div class="field"><label>日付</label><input type="date" id="pl_date" value="${e.date}"></div><div class="field" style="flex:2"><label>店名</label><input id="pl_store" list="dl-store" value="${esc(e.store)}"></div><div class="field"><label>支店</label><input id="pl_branch" list="dl-branch" value="${esc(e.branch)}"></div></div><div class="row"><div class="field"><label>価格</label><input type="number" id="pl_price" value="${e.price || ''}"></div><div class="field"><label>数量</label><input type="number" id="pl_qty" value="${e.qty || ''}"></div><div class="field"><label>単位</label><select id="pl_unit">${PRICE_UNITS.map(u => `<option ${u === e.unit ? 'selected' : ''}>${u}</option>`).join('')}</select></div></div><div class="acc-sub" id="pl_preview" style="margin-bottom:8px"></div><div class="field"><label>メモ</label><input id="pl_note" value="${esc(e.note || '')}"></div><div class="actions"><button class="btn ghost" id="pl_cancel">キャンセル</button><button class="btn" id="pl_ok">保存</button></div>`; const upd = () => { const n = M.normalizedUnitPrice({ price: +$('#pl_price').value, qty: +$('#pl_qty').value, unit: $('#pl_unit').value }); $('#pl_preview').textContent = n ? '実質単価 ≈ ' + fmtNorm(n) : '数量を入れると実質単価を計算します'; }; ['#pl_price', '#pl_qty', '#pl_unit'].forEach(s => $(s).addEventListener('input', upd)); upd(); $('#pl_cancel').addEventListener('click', closeModal); $('#pl_ok').addEventListener('click', () => { const item = $('#pl_item').value.trim(); if (!item) return toast('品目を入れてください'); const price = +$('#pl_price').value; if (!price) return toast('価格を入れてください'); const data = { item, date: $('#pl_date').value, store: $('#pl_store').value, branch: $('#pl_branch').value, price, qty: +$('#pl_qty').value || 0, unit: $('#pl_unit').value, note: $('#pl_note').value }; if (editing) Object.assign(editing, data); else { M.addPriceLog(state, data); priceOpen.add(item); } persist(); refreshDatalists(); closeModal(); renderPrice(); toast('保存しました ✓'); }); showModal(); }
 
   /* ============ ナビ ============ */
-  const TABS = ['entry', 'list', 'drill', 'budget', 'goals', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
-  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: '分析', budget: '予算', goals: '積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
+  const TABS = ['entry', 'list', 'drill', 'budget', 'planning', 'goals', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
+  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: '分析', budget: '予算', planning: '資金計画', goals: '積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
   const BOTTOM_TABS = ['entry', 'list', 'drill', 'budget'];
   function renderDrawer() {
     const groups = [
       ['記録', [['entry', '✎'], ['list', '☰']]],
-      ['分析', [['drill', '◔'], ['report', '▤'], ['budget', '◈'], ['goals', '◆']]],
+      ['分析', [['drill', '◔'], ['report', '▤'], ['budget', '◈'], ['planning', '▣'], ['goals', '◆']]],
       ['リスト', [['wishlist', '♡'], ['price', '⇅']]],
       ['口座', [['accounts', '▦'], ['cards', '▣']]],
       ['その他', [['settings', '⚙']]],
@@ -1232,6 +1311,7 @@ function download(name, text, type) { const blob = new Blob([text], { type }); c
     if (name === 'list') { if (!$('#fltYm').dataset.init) { $('#fltYm').value = currentYM(); $('#fltYm').dataset.init = '1'; } renderList(); }
     else if (name === 'drill') renderDrill();
     else if (name === 'budget') renderBudget();
+    else if (name === 'planning') renderPlanning();
     else if (name === 'goals') renderGoals();
     else if (name === 'wishlist') renderWishlist();
     else if (name === 'price') renderPrice();

@@ -1,11 +1,11 @@
   /* ============ ナビ ============ */
-  const TABS = ['entry', 'list', 'drill', 'budget', 'goals', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
-  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: '分析', budget: '予算', goals: '積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
+  const TABS = ['entry', 'list', 'drill', 'budget', 'planning', 'goals', 'wishlist', 'price', 'accounts', 'cards', 'report', 'settings'];
+  const TAB_LABEL = { entry: '入力', list: '取引一覧', drill: '分析', budget: '予算', planning: '資金計画', goals: '積立', wishlist: 'ほしいもの', price: '価格比較', accounts: '残高・口座', cards: 'カード請求', report: 'レポート', settings: '設定' };
   const BOTTOM_TABS = ['entry', 'list', 'drill', 'budget'];
   function renderDrawer() {
     const groups = [
       ['記録', [['entry', '✎'], ['list', '☰']]],
-      ['分析', [['drill', '◔'], ['report', '▤'], ['budget', '◈'], ['goals', '◆']]],
+      ['分析', [['drill', '◔'], ['report', '▤'], ['budget', '◈'], ['planning', '▣'], ['goals', '◆']]],
       ['リスト', [['wishlist', '♡'], ['price', '⇅']]],
       ['口座', [['accounts', '▦'], ['cards', '▣']]],
       ['その他', [['settings', '⚙']]],
@@ -30,6 +30,7 @@
     if (name === 'list') { if (!$('#fltYm').dataset.init) { $('#fltYm').value = currentYM(); $('#fltYm').dataset.init = '1'; } renderList(); }
     else if (name === 'drill') renderDrill();
     else if (name === 'budget') renderBudget();
+    else if (name === 'planning') renderPlanning();
     else if (name === 'goals') renderGoals();
     else if (name === 'wishlist') renderWishlist();
     else if (name === 'price') renderPrice();
