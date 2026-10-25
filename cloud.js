@@ -7,6 +7,7 @@
   const LS_KEY = 'kakeibo_v0_state';
   const TABLE = CFG.table || 'kakeibo_state';
   let supa = null, currentUser = null, cachedState = null, appLoaded = false;
+  let cloudStamp = null, syncStopped = false, pushChain = Promise.resolve();
 
   const $ = s => document.querySelector(s);
   function setSync(status, msg) {
@@ -33,8 +34,44 @@
       clear() { try { localStorage.removeItem(LS_KEY); } catch (e) { } },
     };
   }
-  function schedulePush(state) { if (!supa || !currentUser) { setSync('local'); return; } clearTimeout(pushTimer); setSync('saving'); pushTimer = setTimeout(() => pushNow(state), 900); }
-  async function pushNow(state) { if (!supa || !currentUser) return; try { const { error } = await supa.from(TABLE).upsert({ user_id: currentUser.id, data: state, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }); setSync(error ? 'error' : 'saved', error ? ('同期エラー: ' + error.message) : null); if (error) console.error('push error', error); } catch (e) { setSync('error'); console.error(e); } }
+  // Serialize writes and require the exact server version we last read.
+  // Uses the existing updated_at column, so no Supabase schema change is needed.
+  function schedulePush(state) {
+    if (!supa || !currentUser) { setSync('local'); return; }
+    if (syncStopped) { setSync('error', '同期停止・JSONバックアップを保存してください'); return; }
+    const snapshot = JSON.parse(JSON.stringify(state));
+    clearTimeout(pushTimer);
+    setSync('saving', '同期準備中…');
+    pushTimer = setTimeout(() => {
+      pushChain = pushChain.then(() => pushNow(snapshot)).catch(e => {
+        syncStopped = true; setSync('error', '同期停止・JSONバックアップを保存してください');
+        console.error('cloud push queue error', e);
+      });
+    }, 900);
+  }
+  async function pushNow(state) {
+    if (!supa || !currentUser || syncStopped) return;
+    try {
+      const nextStamp = new Date(Math.max(Date.now(), (Date.parse(cloudStamp) || 0) + 1)).toISOString();
+      const row = { data: state, updated_at: nextStamp };
+      const result = cloudStamp === null
+        ? await supa.from(TABLE).insert({ user_id: currentUser.id, ...row }).select('updated_at').single()
+        : await supa.from(TABLE).update(row).eq('user_id', currentUser.id)
+            .eq('updated_at', cloudStamp).select('updated_at').maybeSingle();
+      if (result.error) throw result.error;
+      if (!result.data || !result.data.updated_at) {
+        syncStopped = true;
+        setSync('error', '別端末の更新を検出・クラウド保存停止');
+        return;
+      }
+      cloudStamp = result.data.updated_at;
+      setSync('saved', 'クラウドに同期済み');
+    } catch (e) {
+      syncStopped = true;
+      setSync('error', 'クラウド同期停止・JSONバックアップ推奨');
+      console.error('cloud push error', e);
+    }
+  }
 
   function injectApp() { if (appLoaded) return; appLoaded = true; window.StorageAdapter = makeAdapter(); const s = document.createElement('script'); s.src = 'app.js'; document.body.appendChild(s); }
 
@@ -64,23 +101,27 @@
   async function onAuthed(user) {
     currentUser = user; hideLogin(); showAccountBar(user); setSync('saving', '読込中…');
     try {
-      const { data, error } = await supa.from(TABLE).select('data').eq('user_id', user.id).maybeSingle();
+      const { data, error } = await supa.from(TABLE).select('data,updated_at').eq('user_id', user.id).maybeSingle();
       if (error) throw error;
       if (data) {
         // A present-but-empty row is not the same as an account with no row.
         if (!data.data || typeof data.data !== 'object' || Array.isArray(data.data) || !Object.keys(data.data).length)
           throw new Error('クラウドに不正な空データがあります');
+        if (!data.updated_at) throw new Error('クラウドの改訂日時を取得できません');
         cachedState = data.data;
+        cloudStamp = data.updated_at;
         setSync('saved');
       } else {
         // First use only: insert rather than upsert so a concurrent login cannot overwrite a row.
         const ls = localStorage.getItem(LS_KEY);
         cachedState = ls ? safeParse(ls) : null;
         if (cachedState) {
-          const { error: migrationError } = await supa.from(TABLE).insert({
+          const { data: created, error: migrationError } = await supa.from(TABLE).insert({
             user_id: user.id, data: cachedState, updated_at: new Date().toISOString()
-          });
+          }).select('updated_at').single();
           if (migrationError) throw migrationError;
+          if (!created || !created.updated_at) throw new Error('クラウドの保存結果を確認できません');
+          cloudStamp = created.updated_at;
           setSync('saved', 'ローカルデータを移行しました');
         } else setSync('saved', '新規');
       }
