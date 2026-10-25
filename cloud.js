@@ -7,7 +7,7 @@
   const LS_KEY = 'kakeibo_v0_state';
   const TABLE = CFG.table || 'kakeibo_state';
   let supa = null, currentUser = null, cachedState = null, appLoaded = false;
-  let cloudStamp = null, syncStopped = false, pushChain = Promise.resolve();
+  let cloudStamp = null, syncStopped = false, syncInFlight = false, pushChain = Promise.resolve();
 
   const $ = s => document.querySelector(s);
   function setSync(status, msg) {
@@ -43,6 +43,7 @@
     clearTimeout(pushTimer);
     setSync('saving', '同期準備中…');
     pushTimer = setTimeout(() => {
+      pushTimer = null;
       pushChain = pushChain.then(() => pushNow(snapshot)).catch(e => {
         syncStopped = true; setSync('error', '同期停止・JSONバックアップを保存してください');
         console.error('cloud push queue error', e);
@@ -51,6 +52,7 @@
   }
   async function pushNow(state) {
     if (!supa || !currentUser || syncStopped) return;
+    syncInFlight = true;
     try {
       const nextStamp = new Date(Math.max(Date.now(), (Date.parse(cloudStamp) || 0) + 1)).toISOString();
       const row = { data: state, updated_at: nextStamp };
@@ -70,6 +72,8 @@
       syncStopped = true;
       setSync('error', 'クラウド同期停止・JSONバックアップ推奨');
       console.error('cloud push error', e);
+    } finally {
+      syncInFlight = false;
     }
   }
 
@@ -81,7 +85,16 @@
 
   async function doLogin() { const email = ($('#authEmail').value || '').trim(); const pw = $('#authPass').value || ''; if (!email || !pw) return authMsg('メールとパスワードを入力してください', true); authMsg('ログイン中…'); const { data, error } = await supa.auth.signInWithPassword({ email, password: pw }); if (error) return authMsg('ログイン失敗: ' + error.message, true); await onAuthed(data.user); }
   async function doSignup() { const email = ($('#authEmail').value || '').trim(); const pw = $('#authPass').value || ''; if (!email || pw.length < 6) return authMsg('メールと6文字以上のパスワードを入力してください', true); authMsg('アカウント作成中…'); const { data, error } = await supa.auth.signUp({ email, password: pw }); if (error) return authMsg('作成失敗: ' + error.message, true); if (data.session) { await onAuthed(data.user); } else { authMsg('確認メールを送信しました。メール内のリンクを開いてから、もう一度ログインしてください。'); } }
-  async function doLogout() { if (!supa) return; if (!confirm('ログアウトします。よろしいですか？（データはクラウドに保存済みです）')) return; try { await supa.auth.signOut(); } catch (e) { } location.reload(); }
+  async function doLogout() {
+    if (!supa) return;
+    if (syncStopped || pushTimer || syncInFlight) {
+      alert('クラウド同期が未完了です。ログアウトせず、先に家計簿のJSONバックアップを保存してください。');
+      return;
+    }
+    if (!confirm('ログアウトします。よろしいですか？')) return;
+    try { await supa.auth.signOut(); } catch (e) { }
+    location.reload();
+  }
   window.KakeiboCloud = { signOut: doLogout, showLogin, isCloud: () => !!currentUser };
 
   // Treat a failed cloud read as a hard stop, never as an empty account.
