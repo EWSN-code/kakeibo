@@ -1,5 +1,5 @@
 /* Kakeibo v1.9.1: network-first documents, versioned offline assets */
-const CACHE = 'kakeibo-shell-v191';
+const CACHE = 'kakeibo-shell-v191-brandfix1';
 const ASSETS = [
   "./",
   "./index.html",
@@ -14,7 +14,7 @@ const ASSETS = [
   "./cloud.js?v=1.9.1",
   "./app.js?v=1.9.1",
   "./ui-refresh.js?v=1.9.1",
-  "./ui-refresh-entry.js?v=1.9.1",
+  "./ui-refresh-entry.js?v=1.9.1-brandfix1",
   "./planning.html?v=1.9.1",
   "./icon-192.png",
   "./icon-512.png",

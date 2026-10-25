@@ -1,5 +1,5 @@
 /* =====================================================================
- * ui-refresh-entry.js — progressive entry UI for v1.8.0-ui.2
+ * ui-refresh-entry.js — progressive entry UI (version-independent)
  *
  * New entries keep frequently used date/store/branch fields visible.
  * Purchase total and memo stay available but are disclosed on demand.
@@ -8,14 +8,7 @@
 (function () {
   'use strict';
 
-  const VERSION = 'v1.8.0-ui.2';
   const $ = (s, r = document) => r.querySelector(s);
-
-  function updateVersionLabel() {
-    document.title = `家計簿 ${VERSION} ― 複式簿記ハイブリッド`;
-    const version = $('header.top .brand small');
-    if (version) version.textContent = VERSION;
-  }
 
   function isEditing() {
     const submit = $('#entryForm #submit');
@@ -122,12 +115,10 @@
     if (!host || !host.children.length) return false;
     enhanceDateNavigation(host);
     enhanceOptionalFields(host);
-    updateVersionLabel();
     return true;
   }
 
   function init() {
-    updateVersionLabel();
     enhanceEntryForm();
 
     const host = $('#entryForm');
