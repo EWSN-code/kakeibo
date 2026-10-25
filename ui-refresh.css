@@ -657,3 +657,9 @@ button:focus-visible,.drill-row:focus-visible{
  .card-reconcile-select{flex-wrap:wrap}
  .card-reconcile-modal .actions .btn{flex:1 1 auto}
 }
+
+/* v1.9.0: the planning workspace has its own embedded document/CSS boundary. */
+#tab-planning{margin:0;padding:0}
+#tab-planning .planning-embed-frame{width:100%;min-width:0;overflow:hidden}
+#planning-frame{display:block;width:100%;min-height:700px;height:700px;border:0;border-radius:12px;background:#121716;color-scheme:dark}
+@media(max-width:700px){#planning-frame{border-radius:8px}}

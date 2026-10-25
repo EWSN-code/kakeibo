@@ -1,5 +1,5 @@
 {
-  "version": "v1.8.0-ui.6",
+  "version": "v1.9.0",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime loads app.js. Verify via python tools/build_app.py --check before rebuilding.",
   "parts": [
@@ -40,6 +40,10 @@
       "description": "Budget and goals"
     },
     {
+      "file": "85_planning_bridge.part.js",
+      "description": "Planning v1.9 ledger adapter and isolated UI bridge"
+    },
+    {
       "file": "90_wishlist_price.part.js",
       "description": "Wishlist and price"
     },
@@ -48,5 +52,5 @@
       "description": "Navigation boot"
     }
   ],
-  "bundle_sha256": "dc1962db939e9bc3c25ea78af9177df56776db8e6679b8f7b12b17e7dfa83bbb"
+  "bundle_sha256": "324aeba8e01a225b52c8778e8dcec86cf46cbac0f0ab2acf6679be370eef09f9"
 }
