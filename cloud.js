@@ -47,13 +47,49 @@
   async function doLogout() { if (!supa) return; if (!confirm('ログアウトします。よろしいですか？（データはクラウドに保存済みです）')) return; try { await supa.auth.signOut(); } catch (e) { } location.reload(); }
   window.KakeiboCloud = { signOut: doLogout, showLogin, isCloud: () => !!currentUser };
 
+  // Treat a failed cloud read as a hard stop, never as an empty account.
+  function cloudLoadFailed(error) {
+    console.error('cloud load error', error);
+    setSync('error', '読込失敗・保存停止');
+    const bar = $('#accountBar');
+    if (bar && !bar.querySelector('#btnRetryCloud')) {
+      const button = document.createElement('button');
+      button.id = 'btnRetryCloud';
+      button.className = 'btn ghost sm';
+      button.textContent = '再読込';
+      button.addEventListener('click', () => location.reload());
+      bar.appendChild(button);
+    }
+  }
   async function onAuthed(user) {
     currentUser = user; hideLogin(); showAccountBar(user); setSync('saving', '読込中…');
-    let cloudData = null;
-    try { const { data, error } = await supa.from(TABLE).select('data').eq('user_id', user.id).maybeSingle(); if (error) console.error('load error', error); if (data && data.data && Object.keys(data.data).length) cloudData = data.data; } catch (e) { console.error(e); }
-    if (cloudData) { cachedState = cloudData; setSync('saved'); }
-    else { const ls = localStorage.getItem(LS_KEY); cachedState = ls ? safeParse(ls) : null; if (cachedState) { try { await supa.from(TABLE).upsert({ user_id: user.id, data: cachedState, updated_at: new Date().toISOString() }, { onConflict: 'user_id' }); setSync('saved', 'ローカルデータを移行しました'); } catch (e) { setSync('error'); } } else setSync('saved', '新規'); }
-    injectApp();
+    try {
+      const { data, error } = await supa.from(TABLE).select('data').eq('user_id', user.id).maybeSingle();
+      if (error) throw error;
+      if (data) {
+        // A present-but-empty row is not the same as an account with no row.
+        if (!data.data || typeof data.data !== 'object' || Array.isArray(data.data) || !Object.keys(data.data).length)
+          throw new Error('クラウドに不正な空データがあります');
+        cachedState = data.data;
+        setSync('saved');
+      } else {
+        // First use only: insert rather than upsert so a concurrent login cannot overwrite a row.
+        const ls = localStorage.getItem(LS_KEY);
+        cachedState = ls ? safeParse(ls) : null;
+        if (cachedState) {
+          const { error: migrationError } = await supa.from(TABLE).insert({
+            user_id: user.id, data: cachedState, updated_at: new Date().toISOString()
+          });
+          if (migrationError) throw migrationError;
+          setSync('saved', 'ローカルデータを移行しました');
+        } else setSync('saved', '新規');
+      }
+      injectApp();
+    } catch (error) {
+      // Do not start the editable app when the server state is unknown.
+      cachedState = null;
+      cloudLoadFailed(error);
+    }
   }
   function safeParse(s) { try { return JSON.parse(s); } catch (e) { return null; } }
 
