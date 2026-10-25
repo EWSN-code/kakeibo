@@ -77,7 +77,7 @@
     }
   }
 
-  function injectApp() { if (appLoaded) return; appLoaded = true; window.StorageAdapter = makeAdapter(); const s = document.createElement('script'); s.src = 'app.js'; document.body.appendChild(s); }
+  function injectApp() { if (appLoaded) return; appLoaded = true; window.StorageAdapter = makeAdapter(); const s = document.createElement('script'); s.src = 'app.js?v=1.9.1'; document.body.appendChild(s); }
 
   function showLogin() { const o = $('#authOverlay'); if (o) { o.classList.add('show'); $('#authEmail') && $('#authEmail').focus(); } }
   function hideLogin() { const o = $('#authOverlay'); if (o) o.classList.remove('show'); }
@@ -158,6 +158,6 @@
     const sb = $('#authSignup'); if (sb) sb.addEventListener('click', doSignup);
     const pf = $('#authPass'); if (pf) pf.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
   }
-  function registerSW() { if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW登録失敗', e)); } }
+  function registerSW() { if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js', {updateViaCache:'none'}).then(reg => reg.update()).catch(e => console.warn('SW登録失敗', e)); } }
   document.addEventListener('DOMContentLoaded', () => { init(); registerSW(); });
 })();

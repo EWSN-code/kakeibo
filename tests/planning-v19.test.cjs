@@ -1,4 +1,4 @@
-// kakeibo planning v1.9.0 regression tests; node --test tests/planning-v19.test.cjs
+// kakeibo planning v1.9.1 regression tests; node --test tests/planning-v19.test.cjs
 'use strict';
 const { test }=require('node:test');
 const assert=require('node:assert/strict');
@@ -7,7 +7,7 @@ const ROOT=path.resolve(__dirname,'..');
 const html=fs.readFileSync(path.join(ROOT,'planning.html'),'utf8');
 const script=html.match(/<script>([\s\S]*?)<\/script><\/body>/)?.[1];
 assert.ok(script,'planning UI script exists');
-const start=script.indexOf('/* kakeibo v1.9.0 planning workspace');
+const start=script.indexOf('/* kakeibo v1.9.1 planning workspace');
 assert.ok(start>0,'the pure calculation engine precedes the UI');
 const scope={window:{},module:{exports:{}}};
 vm.runInNewContext(script.slice(0,start),scope);
@@ -95,7 +95,7 @@ test('app bundle is byte-identical with ordered sources and manifest SHA',()=>{
  const buf=Buffer.concat(m.parts.map(p=>fs.readFileSync(path.join(ROOT,'src/app',p.file))));
  assert.deepEqual(buf,fs.readFileSync(path.join(ROOT,'app.js')));
  assert.equal(crypto.createHash('sha256').update(buf).digest('hex'),m.bundle_sha256);
- assert.equal(m.version,'v1.9.0');
+ assert.equal(m.version,'v1.9.1');
  new vm.Script(fs.readFileSync(path.join(ROOT,'model.js'),'utf8'));
  new vm.Script(fs.readFileSync(path.join(ROOT,'app.js'),'utf8'));
  new vm.Script(script);

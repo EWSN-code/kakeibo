@@ -1,5 +1,5 @@
 {
-  "version": "v1.9.0",
+  "version": "v1.9.1",
   "bundle": "app.js",
   "description": "Source split for maintainability. Runtime loads app.js. Verify via python tools/build_app.py --check before rebuilding.",
   "parts": [

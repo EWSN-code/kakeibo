@@ -7,14 +7,14 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="家計簿">
-<title>家計簿 v1.9.0 ― 複式簿記ハイブリッド</title>
-<link rel="manifest" href="manifest.json">
+<title>家計簿 v1.9.1 ― 複式簿記ハイブリッド</title>
+<link rel="manifest" href="manifest.json?v=1.9.1">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="icon" href="icon-192.png">
-<link rel="stylesheet" href="styles.css">
-<link rel="stylesheet" href="ui-refresh.css">
-<link rel="stylesheet" href="ui-refresh-analysis.css">
-<link rel="stylesheet" href="ui-refresh-entry.css">
+<link rel="stylesheet" href="styles.css?v=1.9.1">
+<link rel="stylesheet" href="ui-refresh.css?v=1.9.1">
+<link rel="stylesheet" href="ui-refresh-analysis.css?v=1.9.1">
+<link rel="stylesheet" href="ui-refresh-entry.css?v=1.9.1">
 </head>
 <body>
 <div class="auth-overlay" id="authOverlay">
@@ -39,7 +39,7 @@
 <div class="app">
   <header class="top">
     <button class="hamburger" id="hamburger" title="メニュー">≡</button>
-    <div class="brand">家計簿 <small>v1.9.0</small></div>
+    <div class="brand">家計簿 <small>v1.9.1</small></div>
     <div class="cur-tab" id="curTabName"></div>
     <div class="spacer"></div>
     <div class="account-bar" id="accountBar"></div>
@@ -132,7 +132,7 @@
 
   <section id="tab-planning" hidden>
     <div class="planning-embed-frame">
-      <iframe id="planning-frame" title="資金計画 v1.9.0" loading="eager"
+      <iframe id="planning-frame" title="資金計画 v1.9.1" loading="eager"
         referrerpolicy="same-origin" aria-label="資金計画の編集画面"></iframe>
       <p class="hint" style="margin:10px 4px 0">
         画面が表示されない場合：
@@ -292,10 +292,10 @@
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="config.js"></script>
-<script src="model.js"></script>
-<script src="cloud.js"></script>
-<script src="ui-refresh.js"></script>
-<script src="ui-refresh-entry.js"></script>
+<script src="config.js?v=1.9.1"></script>
+<script src="model.js?v=1.9.1"></script>
+<script src="cloud.js?v=1.9.1"></script>
+<script src="ui-refresh.js?v=1.9.1"></script>
+<script src="ui-refresh-entry.js?v=1.9.1"></script>
 </body>
 </html>
