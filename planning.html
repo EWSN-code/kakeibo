@@ -170,7 +170,7 @@ try {
     const raw=localStorage.getItem(KEY);
     if(raw){const saved=JSON.parse(raw);C.validateProject(saved);p=saved;}
   }
-}catch(e){corrupt=true;storageOK=false;console.error('計画読み込み失敗',e);}
+}catch(e){storageOK=false;corrupt=!(e&&['SecurityError','NotSupportedError'].includes(e.name)&&!BRIDGE);console.error('計画読み込み失敗',e);}
 
 let ui={view:'expense',selected:'exp6',mobileDetail:false,search:'',sort:'manual',openRows:new Set(),drag:null};
 let past=[],future=[],editingKey=null,timer=null,toastTimer=null;
@@ -213,15 +213,15 @@ function persist(){
     storageOK=true;
   }catch(e){
     storageOK=false;
-    corrupt=true;
+    if(BRIDGE)corrupt=true; // Standalone can continue editing in memory and export JSON.
     console.error('資金計画の保存停止',e);
-    toast('保存を停止しました：'+e.message);
+    toast(BRIDGE?'保存を停止しました：'+e.message:'自動保存を利用できません。JSON保存でバックアップしてください。');
   }
   status();
   return storageOK;
 }
 
-function status(){const el=$('#save-state');if(el)el.textContent=remote?'別タブの更新あり':corrupt?'読込エラー・保存停止':storageOK?(BRIDGE?'端末に保存済（クラウド同期は本体で確認）':'この端末に保存'):'保存不可・書き出してください';const warn=$('#conflict');if(warn){warn.hidden=!remote&&!corrupt;warn.innerHTML=remote?`別タブで計画が更新されました。上書き保存を停止しています。<button class="btn" data-action="reload-remote">新しい内容へ切替</button> <button class="btn" data-action="export">編集中をJSON保存</button>`:`保存データを読めなかったため、サンプルを表示しています。元データには上書きしていません。<button class="btn" data-action="reset">サンプルに戻して再開</button>`;}}
+function status(){const el=$('#save-state');if(el)el.textContent=remote?'別タブの更新あり':corrupt?'読込エラー・保存停止':storageOK?(BRIDGE?'端末に保存済（クラウド同期は本体で確認）':'この端末に保存'):'保存不可・書き出してください';const warn=$('#conflict');if(warn){warn.hidden=!remote&&!corrupt&&storageOK;warn.innerHTML=(!remote&&!corrupt&&!storageOK)?'<strong>この環境では自動保存できません。編集は続けられますが、必ず「JSON保存」で書き出してください。</strong>':remote?`別タブで計画が更新されました。上書き保存を停止しています。<button class="btn" data-action="reload-remote">新しい内容へ切替</button> <button class="btn" data-action="export">編集中をJSON保存</button>`:`保存データを読めなかったため、サンプルを表示しています。元データには上書きしていません。<button class="btn" data-action="reset">サンプルに戻して再開</button>`;}}
 function checkpoint(){past.push(C.clone(p));if(past.length>30)past.shift();future=[];}
 function mutate(label,fn){editingKey=null;checkpoint();fn();const saved=persist();render();if(label&&saved)toast(label);}
 function updateInput(el,fn){const key=el.dataset.edit+'|'+(el.dataset.id||el.dataset.ym||'');if(editingKey!==key){checkpoint();editingKey=key;}fn();clearTimeout(timer);timer=setTimeout(persist,160);updateNumbers();}
