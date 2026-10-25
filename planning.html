@@ -196,7 +196,7 @@ function storedPlan(){
   return result;
 }
 function persist(){
-  if(remote||corrupt){status();return;}
+  if(remote||corrupt){status();return false;}
   try{
     if(BRIDGE){
       const snapshot=storedPlan();
@@ -218,11 +218,12 @@ function persist(){
     toast('保存を停止しました：'+e.message);
   }
   status();
+  return storageOK;
 }
 
-function status(){const el=$('#save-state');if(el)el.textContent=remote?'別タブの更新あり':corrupt?'読込エラー・保存停止':storageOK?(BRIDGE?'家計簿に保存':'この端末に保存'):'保存不可・書き出してください';const warn=$('#conflict');if(warn){warn.hidden=!remote&&!corrupt;warn.innerHTML=remote?`別タブで計画が更新されました。上書き保存を停止しています。<button class="btn" data-action="reload-remote">新しい内容へ切替</button> <button class="btn" data-action="export">編集中をJSON保存</button>`:`保存データを読めなかったため、サンプルを表示しています。元データには上書きしていません。<button class="btn" data-action="reset">サンプルに戻して再開</button>`;}}
+function status(){const el=$('#save-state');if(el)el.textContent=remote?'別タブの更新あり':corrupt?'読込エラー・保存停止':storageOK?(BRIDGE?'端末に保存済（クラウド同期は本体で確認）':'この端末に保存'):'保存不可・書き出してください';const warn=$('#conflict');if(warn){warn.hidden=!remote&&!corrupt;warn.innerHTML=remote?`別タブで計画が更新されました。上書き保存を停止しています。<button class="btn" data-action="reload-remote">新しい内容へ切替</button> <button class="btn" data-action="export">編集中をJSON保存</button>`:`保存データを読めなかったため、サンプルを表示しています。元データには上書きしていません。<button class="btn" data-action="reset">サンプルに戻して再開</button>`;}}
 function checkpoint(){past.push(C.clone(p));if(past.length>30)past.shift();future=[];}
-function mutate(label,fn){editingKey=null;checkpoint();fn();persist();render();if(label)toast(label);}
+function mutate(label,fn){editingKey=null;checkpoint();fn();const saved=persist();render();if(label&&saved)toast(label);}
 function updateInput(el,fn){const key=el.dataset.edit+'|'+(el.dataset.id||el.dataset.ym||'');if(editingKey!==key){checkpoint();editingKey=key;}fn();clearTimeout(timer);timer=setTimeout(persist,160);updateNumbers();}
 function navigate(view){ui.view=view;ui.search='';ui.sort='manual';ui.mobileDetail=false;ui.openRows.clear();editingKey=null;render();window.scrollTo({top:0,behavior:'auto'});}
 function moneyInput(v){if(String(v).trim()==='')return null;const n=Number(String(v).replaceAll(',','').replace(/[０-９]/g,c=>String.fromCharCode(c.charCodeAt(0)-65248)));return Number.isFinite(n)&&Math.abs(n)<=1e12?Math.round(n):null;}
